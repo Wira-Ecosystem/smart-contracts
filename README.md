@@ -1,30 +1,20 @@
-## Foundry
+## Wira Wallet
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
-
-Foundry consists of:
-
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
-## Documentation
-
-https://book.getfoundry.sh/
+**Wira wallet is an AA wallet designed to make blockhain interactios easier for the users**
 
 ## Usage
 
-### Build
+Once the repository is cloned, install the openZeppelin and account abstraction dependencies
 
 ```shell
-$ forge build
+$ forge install OpenZeppelin/openzeppelin-contracts
+$ forge install eth-infinitism/account-abstraction@v0.7.0
 ```
 
-### Test
+Next install the Chainlink CCIP dependences, this doesn't require to have a node project inside
 
 ```shell
-$ forge test
+$ npm i @chainlink/contracts @chainlink/contracts-ccip --save-dev
 ```
 
 ### Format
@@ -48,13 +38,7 @@ $ anvil
 ### Deploy
 
 ```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
+$ forge script script/WalletAccountFactory.s.sol --rpc-url <your_rpc_url> --private-key <your_private_key> --broadcast -vvvv
 ```
 
 ### Help
