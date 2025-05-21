@@ -1,2 +1,4 @@
 @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
 @account-abstraction/=lib/account-abstraction/contracts/
+@chainlink/contracts-ccip@1.6.0-beta.3/=node_modules/@chainlink/contracts-ccip/
+@chainlink/contracts@1.4.0/=node_modules/@chainlink/contracts/
