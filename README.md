@@ -14,7 +14,7 @@ $ forge install eth-infinitism/account-abstraction@v0.7.0
 Next install the Chainlink CCIP dependences, this doesn't require to have a node project inside
 
 ```shell
-$ npm i @chainlink/contracts @chainlink/contracts-ccip --save-dev
+$ npm install
 ```
 
 ### Format
