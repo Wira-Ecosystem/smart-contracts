@@ -7,3 +7,6 @@
 [submodule "lib/account-abstraction"]
 	path = lib/account-abstraction
 	url = https://github.com/eth-infinitism/account-abstraction
+[submodule "lib/v3-periphery"]
+	path = lib/v3-periphery
+	url = https://github.com/uniswap/v3-periphery
