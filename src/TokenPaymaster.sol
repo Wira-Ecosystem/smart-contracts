@@ -5,6 +5,7 @@ pragma solidity ^0.8.24;
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+import "@openzeppelin/contracts/utils/Strings.sol";
 import "@account-abstraction/interfaces/IEntryPoint.sol";
 import "@account-abstraction/core/BasePaymaster.sol";
 import "@account-abstraction/core/Helpers.sol";
@@ -49,6 +50,13 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
     /// @notice All 'price' variables are multiplied by this value to avoid rounding up
     uint256 private constant PRICE_DENOMINATOR = 1e26;
 
+    /// @notice Token used decimals power
+    uint256 public tokenDecimalsPower;
+
+    bool public logVariables = false;
+    bool public logTransfer = false;
+    bool public logResult = false;
+
     TokenPaymasterConfig public tokenPaymasterConfig;
 
     /// @notice Initializes the TokenPaymaster contract with the given parameters.
@@ -62,6 +70,7 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
     /// @param _owner The address that will be set as the owner of the contract.
     constructor(
         IERC20Metadata _token,
+        uint8 _tokenDecimals,
         IEntryPoint _entryPoint,
         IERC20 _wrappedNative,
         ISwapRouter _uniswap,
@@ -83,6 +92,7 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
     _uniswapHelperConfig
     )
     {
+        tokenDecimalsPower = 10 ** _tokenDecimals;
         setTokenPaymasterConfig(_tokenPaymasterConfig);
         transferOwnership(_owner);
     }
@@ -96,6 +106,13 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
         require(_tokenPaymasterConfig.priceMarkup >= PRICE_DENOMINATOR, "TPM: price markup too low");
         tokenPaymasterConfig = _tokenPaymasterConfig;
         emit ConfigUpdated(_tokenPaymasterConfig);
+    }
+
+    /// @notice Update token decimals
+    function setTokenDecimals(
+        uint8 _tokenDecimals
+    ) public onlyOwner{
+        tokenDecimalsPower = 10 ** _tokenDecimals;
     }
 
     function setUniswapConfiguration(
@@ -138,15 +155,58 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
                     cachedPriceWithMarkup = clientSuppliedPrice;
                 }
             }
-            uint256 tokenAmount = weiToToken(preChargeNative, cachedPriceWithMarkup);
+
+            uint256 tokenAmount = weiToToken(preChargeNative, cachedPriceWithMarkup) / tokenDecimalsPower;
+            string memory response = _createErrorMessage(
+                tokenAmount, 
+                dataLength, 
+                cachedPriceWithMarkup, 
+                preChargeNative, 
+                refundPostopCost, 
+                maxFeePerGas, 
+                priceMarkup
+            );
+
+            require(!logVariables, response);
             SafeERC20.safeTransferFrom(token, userOp.sender, address(this), tokenAmount);
+            require(!logTransfer, "Token transfer success");
             context = abi.encode(tokenAmount, userOp.sender);
             validationResult = _packValidationData(
                 false,
                 uint48(cachedPriceTimestamp + tokenPaymasterConfig.priceMaxAge),
                 0
             );
+
+            string memory resultResp = string.concat("Validation result: ", Strings.toString(validationResult));
+            require(!logResult, resultResp);
         }
+    }
+
+    // Helper function to create the error message
+    function _createErrorMessage(
+        uint256 tokenAmount,
+        uint256 dataLength,
+        uint256 cachedPriceWithMarkup,
+        uint256 preChargeNative,
+        uint256 refundPostopCost,
+        uint256 maxFeePerGas,
+        uint256 priceMarkup
+    ) private pure returns (string memory) {
+        return string.concat("Reverted data: ",
+            "tokenAmount: ", Strings.toString(tokenAmount),
+            " dataLength: ", Strings.toString(dataLength),
+            " cachedPriceWithMarkup: ", Strings.toString(cachedPriceWithMarkup),
+            " preChargeNative: ", Strings.toString(preChargeNative),
+            " refundPostopCost: ", Strings.toString(refundPostopCost),
+            " maxFeePerGas: ", Strings.toString(maxFeePerGas),
+            " priceMarkup: ", Strings.toString(priceMarkup)
+        );
+    }
+
+    function setLogParams(bool _logVariables, bool _logTransfer, bool _logResult) external onlyOwner {
+        logVariables = _logVariables;
+        logTransfer = _logTransfer;
+        logResult = _logResult;
     }
 
     /// @notice Performs post-operation tasks, such as updating the token price and refunding excess tokens.
@@ -168,7 +228,7 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
             uint256 cachedPriceWithMarkup = _cachedPrice * PRICE_DENOMINATOR / priceMarkup;
         // Refund tokens based on actual gas cost
             uint256 actualChargeNative = actualGasCost + tokenPaymasterConfig.refundPostopCost * actualUserOpFeePerGas;
-            uint256 actualTokenNeeded = weiToToken(actualChargeNative, cachedPriceWithMarkup);
+            uint256 actualTokenNeeded = weiToToken(actualChargeNative, cachedPriceWithMarkup) / tokenDecimalsPower;
             if (preCharge > actualTokenNeeded) {
                 // If the initially provided token amount is greater than the actual amount needed, refund the difference
                 SafeERC20.safeTransfer(

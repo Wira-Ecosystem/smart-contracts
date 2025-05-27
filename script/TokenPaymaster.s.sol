@@ -29,6 +29,8 @@ contract TokenPaymasterScript is Script {
             priceMaxAge: 86400             // Price valid for 1 day (in seconds)
         });
 
+        vm.startBroadcast(deployerPrivateKey); // Start broadcasting transactions
+
         //ETH/usd oracle price: 1 ETH = $2000
         MockOracle ethOracle = new MockOracle(200000000000, 8);
 
@@ -53,11 +55,10 @@ contract TokenPaymasterScript is Script {
             slippage: 5,                   // 5% slippage tolerance
             uniswapPoolFee: 3000           // 0.3% pool fee (3000 = 0.3%)
         });
-
-        vm.startBroadcast(deployerPrivateKey); // Start broadcasting transactions
         
         TokenPaymaster tokenPaymaster = new TokenPaymaster(
             gasToken,
+            6,  //Gas token decimals
             ENTRYPOINT,
             wrappedNative,
             swapRouter,
