@@ -11,6 +11,7 @@ import "@account-abstraction/core/BasePaymaster.sol";
 import "@account-abstraction/core/Helpers.sol";
 import "./utils/UniswapHelper.sol";
 import "./utils/OracleHelper.sol";
+import {SimpleAccount} from "./SimpleAccount.sol";
 
 /// @title Sample ERC-20 Token Paymaster for ERC-4337
 /// This Paymaster covers gas fees in exchange for ERC20 tokens charged using allowance pre-issued by ERC-4337 accounts.
@@ -52,10 +53,7 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
 
     /// @notice Token used decimals power
     uint256 public tokenDecimalsPower;
-
-    bool public logVariables = false;
-    bool public logTransfer = false;
-    bool public logResult = false;
+    uint8 public logPostOpSelect = 0;
 
     TokenPaymasterConfig public tokenPaymasterConfig;
 
@@ -130,83 +128,53 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
 
     /// @notice Validates a paymaster user operation and calculates the required token amount for the transaction.
     /// @param userOp The user operation data.
-    /// @param requiredPreFund The maximum cost (in native token) the paymaster has to prefund.
     /// @return context The context containing the token amount and user sender address (if applicable).
     /// @return validationResult A uint256 value indicating the result of the validation (always 0 in this implementation).
-    function _validatePaymasterUserOp(PackedUserOperation calldata userOp, bytes32, uint256 requiredPreFund)
+    function _validatePaymasterUserOp(PackedUserOperation calldata userOp, bytes32, uint256 /*requiredPreFund*/)
     internal
+    view
     override
     returns (bytes memory context, uint256 validationResult) {unchecked {
-            uint256 priceMarkup = tokenPaymasterConfig.priceMarkup;
             uint256 dataLength = userOp.paymasterAndData.length - PAYMASTER_DATA_OFFSET;
             require(dataLength == 0 || dataLength == 32,
                 "TPM: invalid data length"
             );
-            uint256 maxFeePerGas = userOp.unpackMaxFeePerGas();
-            uint256 refundPostopCost = tokenPaymasterConfig.refundPostopCost;
-            require(refundPostopCost < userOp.unpackPostOpGasLimit(), "TPM: postOpGasLimit too low");
-            uint256 preChargeNative = requiredPreFund + (refundPostopCost * maxFeePerGas);
-        // note: as price is in native-asset-per-token and we want more tokens increasing it means dividing it by markup
-            uint256 cachedPriceWithMarkup = cachedPrice * PRICE_DENOMINATOR / priceMarkup;
-            if (dataLength == 32) {
-                uint256 clientSuppliedPrice = uint256(bytes32(userOp.paymasterAndData[PAYMASTER_DATA_OFFSET : PAYMASTER_DATA_OFFSET + 32]));
-                if (clientSuppliedPrice < cachedPriceWithMarkup) {
-                    // note: smaller number means 'more native asset per token'
-                    cachedPriceWithMarkup = clientSuppliedPrice;
-                }
+
+            address receiverAddress = address(0);
+            if(dataLength == 32) {
+                (address receiver, bool success) = checkReceiver(userOp.paymasterAndData);
+                require(success, "PAE: not address");
+                SimpleAccount account = SimpleAccount(payable(receiver));
+                require(account.isThisASimpleAccountContract() == true, "PAE: not account");
+                require(account.letCollectOnDeliver() == true, "PAE: cant pay");
+
+                bytes32 to = bytes32(userOp.callData[4:36]);
+                address toAddress = address(uint160(uint256(to)));
+
+                require(toAddress == receiver, "PAE: invalid pay");
+                receiverAddress = receiver;
             }
 
-            uint256 tokenAmount = weiToToken(preChargeNative, cachedPriceWithMarkup) / tokenDecimalsPower;
-            string memory response = _createErrorMessage(
-                tokenAmount, 
-                dataLength, 
-                cachedPriceWithMarkup, 
-                preChargeNative, 
-                refundPostopCost, 
-                maxFeePerGas, 
-                priceMarkup
-            );
-
-            require(!logVariables, response);
-            SafeERC20.safeTransferFrom(token, userOp.sender, address(this), tokenAmount);
-            require(!logTransfer, "Token transfer success");
-            context = abi.encode(tokenAmount, userOp.sender);
+            context = abi.encode(userOp.sender, receiverAddress);
             validationResult = _packValidationData(
                 false,
                 uint48(cachedPriceTimestamp + tokenPaymasterConfig.priceMaxAge),
                 0
             );
-
-            string memory resultResp = string.concat("Validation result: ", Strings.toString(validationResult));
-            require(!logResult, resultResp);
         }
     }
 
-    // Helper function to create the error message
-    function _createErrorMessage(
-        uint256 tokenAmount,
-        uint256 dataLength,
-        uint256 cachedPriceWithMarkup,
-        uint256 preChargeNative,
-        uint256 refundPostopCost,
-        uint256 maxFeePerGas,
-        uint256 priceMarkup
-    ) private pure returns (string memory) {
-        return string.concat("Reverted data: ",
-            "tokenAmount: ", Strings.toString(tokenAmount),
-            " dataLength: ", Strings.toString(dataLength),
-            " cachedPriceWithMarkup: ", Strings.toString(cachedPriceWithMarkup),
-            " preChargeNative: ", Strings.toString(preChargeNative),
-            " refundPostopCost: ", Strings.toString(refundPostopCost),
-            " maxFeePerGas: ", Strings.toString(maxFeePerGas),
-            " priceMarkup: ", Strings.toString(priceMarkup)
-        );
+    // Check if receiver exists
+    function checkReceiver(bytes calldata paymasterAndData) private pure returns (address, bool) {
+        bytes32 receiverData = bytes32(paymasterAndData[PAYMASTER_DATA_OFFSET:PAYMASTER_DATA_OFFSET + 32]);
+
+        address receiver = address(uint160(uint256(receiverData)));
+        bool success = receiver != address(0);
+        return (receiver, success);
     }
 
-    function setLogParams(bool _logVariables, bool _logTransfer, bool _logResult) external onlyOwner {
-        logVariables = _logVariables;
-        logTransfer = _logTransfer;
-        logResult = _logResult;
+    function setLogParams(uint8 _logPostOpSelect) external onlyOwner {
+        logPostOpSelect = _logPostOpSelect;
     }
 
     /// @notice Performs post-operation tasks, such as updating the token price and refunding excess tokens.
@@ -220,32 +188,31 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
         unchecked {
             uint256 priceMarkup = tokenPaymasterConfig.priceMarkup;
             (
-                uint256 preCharge,
-                address userOpSender
-            ) = abi.decode(context, (uint256, address));
-            uint256 _cachedPrice = updateCachedPrice(false);
-        // note: as price is in native-asset-per-token and we want more tokens increasing it means dividing it by markup
+                address userOpSender,
+                address receiver
+            ) = abi.decode(context, (address, address));
+
+            uint256 _cachedPrice = updateCachedPrice(false);          
+            // note: as price is in native-asset-per-token and we want more tokens increasing it means dividing it by markup
             uint256 cachedPriceWithMarkup = _cachedPrice * PRICE_DENOMINATOR / priceMarkup;
-        // Refund tokens based on actual gas cost
+
+            // Refund tokens based on actual gas cost
             uint256 actualChargeNative = actualGasCost + tokenPaymasterConfig.refundPostopCost * actualUserOpFeePerGas;
             uint256 actualTokenNeeded = weiToToken(actualChargeNative, cachedPriceWithMarkup) / tokenDecimalsPower;
-            if (preCharge > actualTokenNeeded) {
-                // If the initially provided token amount is greater than the actual amount needed, refund the difference
-                SafeERC20.safeTransfer(
-                    token,
-                    userOpSender,
-                    preCharge - actualTokenNeeded
-                );
-            } else if (preCharge < actualTokenNeeded) {
-                // Attempt to cover Paymaster's gas expenses by withdrawing the 'overdraft' from the client
-                // If the transfer reverts also revert the 'postOp' to remove the incentive to cheat
-                SafeERC20.safeTransferFrom(
-                    token,
-                    userOpSender,
-                    address(this),
-                    actualTokenNeeded - preCharge
-                );
+            require(logPostOpSelect != 1, string.concat("actualTokenNeeded: ", Strings.toString(actualTokenNeeded)));
+
+            address toCharge = receiver;
+            if(toCharge == address(0)) {
+                toCharge = userOpSender;
             }
+            require(logPostOpSelect != 2, string.concat("toCharge: ", Strings.toHexString(toCharge)));
+
+            SafeERC20.safeTransferFrom(
+                token,
+                toCharge,
+                address(this),
+                actualTokenNeeded
+            );
 
             emit UserOperationSponsored(userOpSender, actualTokenNeeded, actualGasCost, cachedPriceWithMarkup);
             refillEntryPointDeposit(_cachedPrice);

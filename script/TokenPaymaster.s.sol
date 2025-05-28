@@ -58,7 +58,7 @@ contract TokenPaymasterScript is Script {
         
         TokenPaymaster tokenPaymaster = new TokenPaymaster(
             gasToken,
-            6,  //Gas token decimals
+            12,  //Gas token decimals
             ENTRYPOINT,
             wrappedNative,
             swapRouter,
