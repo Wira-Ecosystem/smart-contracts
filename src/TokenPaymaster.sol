@@ -5,7 +5,6 @@ pragma solidity ^0.8.24;
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import "@openzeppelin/contracts/utils/Strings.sol";
 import "@account-abstraction/interfaces/IEntryPoint.sol";
 import "@account-abstraction/core/BasePaymaster.sol";
 import "@account-abstraction/core/Helpers.sol";
@@ -53,7 +52,6 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
 
     /// @notice Token used decimals power
     uint256 public tokenDecimalsPower;
-    uint8 public logPostOpSelect = 0;
 
     TokenPaymasterConfig public tokenPaymasterConfig;
 
@@ -173,10 +171,6 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
         return (receiver, success);
     }
 
-    function setLogParams(uint8 _logPostOpSelect) external onlyOwner {
-        logPostOpSelect = _logPostOpSelect;
-    }
-
     /// @notice Performs post-operation tasks, such as updating the token price and refunding excess tokens.
     /// @dev This function is called after a user operation has been executed or reverted.
     /// @param context The context containing the token amount and user sender address.
@@ -199,13 +193,11 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
             // Refund tokens based on actual gas cost
             uint256 actualChargeNative = actualGasCost + tokenPaymasterConfig.refundPostopCost * actualUserOpFeePerGas;
             uint256 actualTokenNeeded = weiToToken(actualChargeNative, cachedPriceWithMarkup) / tokenDecimalsPower;
-            require(logPostOpSelect != 1, string.concat("actualTokenNeeded: ", Strings.toString(actualTokenNeeded)));
 
             address toCharge = receiver;
             if(toCharge == address(0)) {
                 toCharge = userOpSender;
             }
-            require(logPostOpSelect != 2, string.concat("toCharge: ", Strings.toHexString(toCharge)));
 
             SafeERC20.safeTransferFrom(
                 token,
