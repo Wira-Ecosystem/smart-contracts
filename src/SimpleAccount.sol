@@ -14,11 +14,10 @@ import "@account-abstraction/core/Helpers.sol";
 import "./TokenCallbackHandler.sol";
 
 import {IRouterClient} from "@chainlink/contracts-ccip@1.6.0-beta.3/contracts/interfaces/IRouterClient.sol";
-import {OwnerIsCreator} from "@chainlink/contracts@1.4.0/src/v0.8/shared/access/OwnerIsCreator.sol";
 import {Client} from "@chainlink/contracts-ccip@1.6.0-beta.3/contracts/libraries/Client.sol";
 import {IERC20} from "@chainlink/contracts@1.4.0/src/v0.8/vendor/openzeppelin-solidity/v4.8.3/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@chainlink/contracts@1.4.0/src/v0.8/vendor/openzeppelin-solidity/v4.8.3/contracts/token/ERC20/utils/SafeERC20.sol";
-
+import "./Guardians.sol";
 /**
   * minimal account.
   *  this is sample minimal account.
@@ -28,8 +27,9 @@ import {SafeERC20} from "@chainlink/contracts@1.4.0/src/v0.8/vendor/openzeppelin
 contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, Initializable {
     address public owner;
     IEntryPoint private immutable _entryPoint;
-
+    address public guardian;
     using SafeERC20 for IERC20;
+        mapping(bytes32 => string) private _streamOf;
 
     // Custom errors to provide more descriptive revert messages.
     error NotEnoughBalance(uint256 currentBalance, uint256 calculatedFees); // Used to make sure contract has enough balance to cover the fees.
@@ -37,6 +37,9 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
     error FailedToWithdrawEth(address owner, address target, uint256 value); // Used when the withdrawal of Ether fails.
     error DestinationChainNotAllowlisted(uint64 destinationChainSelector); // Used when the destination chain has not been allowlisted by the contract owner.
     error InvalidReceiverAddress(); // Used when the receiver address is 0.
+    error OnlyOwnerOrEntryPoint();
+    error OnlyOwnerOrAccount();
+    error GuardianNotConfigurado();
     // Event emitted when the tokens are transferred to an account on another chain.
     event TokensTransferred(
         bytes32 indexed messageId, // The unique ID of the message.
@@ -54,10 +57,49 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
     IERC20 private immutable s_linkToken;
 
     event SimpleAccountInitialized(IEntryPoint indexed entryPoint, address indexed owner);
+    event OwnerRecovered(address indexed newOwner);
+    event StreamRegistered(bytes32 indexed idHash, string streamId);
 
     modifier onlyOwner() {
         _onlyOwner();
         _;
+    }
+
+    modifier onlyGuardianContract() {
+        require(msg.sender == address(guardian), "Only guardian contract can call");
+        _;
+    }
+
+    function registerStream(
+        bytes32 idHash,
+        string calldata streamId
+    ) external onlyOwner {
+        require(bytes(_streamOf[idHash]).length == 0, "already registered");
+        _streamOf[idHash] = streamId;
+        emit StreamRegistered(idHash, streamId);
+    }
+
+    function getStream(bytes32 idHash) external view returns (string memory) {
+        return _streamOf[idHash];
+    }
+
+     function setGuardian(address _guardian) external onlyOwner {
+        require(_guardian != address(0), "Guardian cannot be zero address");
+        guardian = _guardian;
+    }
+
+    function getGuardian() external view returns (address) {
+        return guardian;
+    }
+
+     function executeRecovery(address newOwner) external {
+        if (guardian == address(0)) revert GuardianNotConfigurado();
+ 
+        require(msg.sender == guardian, "Only guardian can recover");
+        require(newOwner != address(0), "New owner cannot be zero");
+
+        owner = newOwner;
+        emit OwnerRecovered(newOwner);
     }
 
     /// @inheritdoc BaseAccount
@@ -125,6 +167,7 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
      */
     function initialize(address anOwner) public virtual initializer {
         _initialize(anOwner);
+        emit SimpleAccountInitialized(_entryPoint, owner);
     }
 
     function _initialize(address anOwner) internal virtual {
@@ -415,4 +458,3 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
         IERC20(_token).safeTransfer(_beneficiary, amount);
     }
 }
-

@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/utils/Create2.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import "./SimpleAccount.sol";
-
+import "./Guardians.sol";
 /**
  * A sample factory contract for SimpleAccount
  * A UserOperations "initCode" holds the address of the factory, and a method call (to createAccount, in this sample factory).
@@ -14,6 +14,7 @@ import "./SimpleAccount.sol";
  */
 contract SimpleAccountFactory {
     SimpleAccount public immutable accountImplementation;
+    mapping(address => address) public guardianOf;
 
     mapping(uint256 => address) public routers;
     mapping(uint256 => address) public links;
@@ -24,6 +25,8 @@ contract SimpleAccountFactory {
         address link,
         address account
     );
+
+    event GuardianCreated(address indexed account, address indexed guardian);
 
     constructor(IEntryPoint _entryPoint) {
         //Chainlink testnet routers
@@ -69,6 +72,18 @@ contract SimpleAccountFactory {
                 address(accountImplementation),
                 abi.encodeCall(SimpleAccount.initialize, (owner))
             )));
+
+        
+
+        // 2) Despliega el contrato Guardian para esta cuenta
+        Guardian guardianContract = new Guardian(address(ret));
+
+        // 3) Llamada setGuardian en la cuenta recién creada
+        ret.setGuardian(address(guardianContract));
+
+        // 4) Guarda en el mapping y emite evento
+        guardianOf[address(ret)] = address(guardianContract);
+        emit GuardianCreated(address(ret), address(guardianContract));    
     }
 
     /**
