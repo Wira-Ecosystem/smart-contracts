@@ -23,10 +23,11 @@ $ npm install
 $ forge fmt
 ```
 
-### Gas Snapshots
+### Test
+Is mandatory to use a forked network for testing
 
 ```shell
-$ forge snapshot
+$ forge test --fork-url <your_rpc_url>
 ```
 
 ### Anvil

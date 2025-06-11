@@ -56,6 +56,9 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
     IRouterClient private immutable s_router;
     IERC20 private immutable s_linkToken;
 
+    bool public immutable isThisASimpleAccountContract = true; //Used to check an address is a SimpleAccount contract
+    bool public letCollectOnDeliver; //Collect on deliver option
+
     event SimpleAccountInitialized(IEntryPoint indexed entryPoint, address indexed owner);
     event OwnerRecovered(address indexed newOwner);
     event StreamRegistered(bytes32 indexed idHash, string streamId);
@@ -456,5 +459,10 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
         if (amount == 0) revert NothingToWithdraw();
 
         IERC20(_token).safeTransfer(_beneficiary, amount);
+    }
+
+    /// @notice active/disable option to pay gas of receiving transfers
+    function setCollectOnDeliver(bool _collectOnDeliver) external onlyOwner {
+        letCollectOnDeliver = _collectOnDeliver;
     }
 }
