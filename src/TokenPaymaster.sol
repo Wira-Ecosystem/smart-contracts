@@ -13,7 +13,6 @@ import "./utils/UniswapHelper.sol";
 import "./utils/OracleHelper.sol";
 import {SimpleAccount} from "./SimpleAccount.sol";
 import "./transferer/CrossChainTransferer.sol";
-import {console} from "forge-std/Test.sol";
 
 /// @title Sample ERC-20 Token Paymaster for ERC-4337
 /// This Paymaster covers gas fees in exchange for ERC20 tokens charged using allowance pre-issued by ERC-4337 accounts.
