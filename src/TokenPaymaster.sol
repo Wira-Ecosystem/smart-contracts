@@ -8,9 +8,12 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@account-abstraction/interfaces/IEntryPoint.sol";
 import "@account-abstraction/core/BasePaymaster.sol";
 import "@account-abstraction/core/Helpers.sol";
+
 import "./utils/UniswapHelper.sol";
 import "./utils/OracleHelper.sol";
 import {SimpleAccount} from "./SimpleAccount.sol";
+import "./transferer/CrossChainTransferer.sol";
+import {console} from "forge-std/Test.sol";
 
 /// @title Sample ERC-20 Token Paymaster for ERC-4337
 /// This Paymaster covers gas fees in exchange for ERC20 tokens charged using allowance pre-issued by ERC-4337 accounts.
@@ -23,7 +26,7 @@ import {SimpleAccount} from "./SimpleAccount.sol";
 /// It also allows updating price configuration and withdrawing tokens by the contract owner.
 /// The contract uses an Oracle to fetch the latest token prices.
 /// @dev Inherits from BasePaymaster.
-contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
+contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper, CrossChainTransferer {
 
     using UserOperationLib for PackedUserOperation;
 
@@ -55,6 +58,11 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
 
     TokenPaymasterConfig public tokenPaymasterConfig;
 
+    modifier senderIsValid(address sender) {
+        require(msg.sender == address(this) || msg.sender == sender, "Sender must be contract itself or msg.sender");
+        _;
+    }
+
     /// @notice Initializes the TokenPaymaster contract with the given parameters.
     /// @param _token The ERC20 token used for transaction fee payments.
     /// @param _entryPoint The EntryPoint contract used in the Account Abstraction infrastructure.
@@ -73,7 +81,10 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
         TokenPaymasterConfig memory _tokenPaymasterConfig,
         OracleHelperConfig memory _oracleHelperConfig,
         UniswapHelperConfig memory _uniswapHelperConfig,
-        address _owner
+        address _owner,
+        address _wormholeRelayer,
+        address _tokenBridge,
+        address _wormhole
     )
     BasePaymaster(
     _entryPoint
@@ -86,6 +97,11 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
     _wrappedNative,
     _uniswap,
     _uniswapHelperConfig
+    )
+    CrossChainTransferer(
+        _wormholeRelayer,
+        _tokenBridge,
+        _wormhole
     )
     {
         tokenDecimalsPower = 10 ** _tokenDecimals;
@@ -128,32 +144,25 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
     /// @param userOp The user operation data.
     /// @return context The context containing the token amount and user sender address (if applicable).
     /// @return validationResult A uint256 value indicating the result of the validation (always 0 in this implementation).
-    function _validatePaymasterUserOp(PackedUserOperation calldata userOp, bytes32, uint256 /*requiredPreFund*/)
+    function _validatePaymasterUserOp(PackedUserOperation calldata userOp, bytes32, uint256 requiredPreFund)
     internal
     view
     override
     returns (bytes memory context, uint256 validationResult) {unchecked {
-            uint256 dataLength = userOp.paymasterAndData.length - PAYMASTER_DATA_OFFSET;
-            require(dataLength == 0 || dataLength == 32,
-                "TPM: invalid data length"
-            );
+            require(tokenPaymasterConfig.refundPostopCost < userOp.unpackPostOpGasLimit(), "TPM: postOpGasLimit too low");
+            uint256 preChargeNative = requiredPreFund + (tokenPaymasterConfig.refundPostopCost * userOp.unpackMaxFeePerGas());
+            uint256 cachedPriceWithMarkup = cachedPrice * PRICE_DENOMINATOR / tokenPaymasterConfig.priceMarkup;
+            uint256 tokenAmount = weiToToken(preChargeNative, cachedPriceWithMarkup) / tokenDecimalsPower;
 
-            address receiverAddress = address(0);
-            if(dataLength == 32) {
-                (address receiver, bool success) = checkReceiver(userOp.paymasterAndData);
-                require(success, "PAE: not address");
-                SimpleAccount account = SimpleAccount(payable(receiver));
-                require(account.isThisASimpleAccountContract() == true, "PAE: not account");
-                require(account.letCollectOnDeliver() == true, "PAE: cant pay");
-
-                bytes32 to = bytes32(userOp.callData[4:36]);
-                address toAddress = address(uint160(uint256(to)));
-
-                require(toAddress == receiver, "PAE: invalid pay");
-                receiverAddress = receiver;
+            address toCharge = getReceiverAddressOnPay(userOp.callData);
+            if(toCharge == address(0)){
+                toCharge = userOp.sender;
             }
 
-            context = abi.encode(userOp.sender, receiverAddress);
+            require(token.balanceOf(toCharge) >= tokenAmount, "Not enough gas");
+            require(token.allowance(toCharge, address(this)) >= tokenAmount, "Not enough gas allowance");
+
+            context = abi.encode(userOp.sender, toCharge);
             validationResult = _packValidationData(
                 false,
                 uint48(cachedPriceTimestamp + tokenPaymasterConfig.priceMaxAge),
@@ -162,13 +171,16 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
         }
     }
 
-    // Check if receiver exists
-    function checkReceiver(bytes calldata paymasterAndData) private pure returns (address, bool) {
-        bytes32 receiverData = bytes32(paymasterAndData[PAYMASTER_DATA_OFFSET:PAYMASTER_DATA_OFFSET + 32]);
-
-        address receiver = address(uint160(uint256(receiverData)));
-        bool success = receiver != address(0);
-        return (receiver, success);
+    // If receiver will pay for transaction, get their address
+    function getReceiverAddressOnPay(bytes calldata callData) private view returns (address receiver) {
+        receiver = address(0);
+        if(callData.length > 168) {
+            address toContract = abi.decode(callData[4:36], (address));
+            //check calling contract address is own and function is transferReceiverPay
+            if(toContract == address(this) && bytes4(callData[132:136]) == this.transferReceiverPay.selector) {
+                receiver = abi.decode(callData[136:168], (address));
+            }
+        }
     }
 
     /// @notice Performs post-operation tasks, such as updating the token price and refunding excess tokens.
@@ -180,24 +192,16 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
     //      It is not the same as tx.gasprice, which is what the bundler pays.
     function _postOp(PostOpMode, bytes calldata context, uint256 actualGasCost, uint256 actualUserOpFeePerGas) internal override {
         unchecked {
-            uint256 priceMarkup = tokenPaymasterConfig.priceMarkup;
             (
                 address userOpSender,
-                address receiver
+                address toCharge
             ) = abi.decode(context, (address, address));
 
+            //claim actual gas token needed
             uint256 _cachedPrice = updateCachedPrice(false);          
-            // note: as price is in native-asset-per-token and we want more tokens increasing it means dividing it by markup
-            uint256 cachedPriceWithMarkup = _cachedPrice * PRICE_DENOMINATOR / priceMarkup;
-
-            // Refund tokens based on actual gas cost
+            uint256 cachedPriceWithMarkup = _cachedPrice * PRICE_DENOMINATOR / tokenPaymasterConfig.priceMarkup;
             uint256 actualChargeNative = actualGasCost + tokenPaymasterConfig.refundPostopCost * actualUserOpFeePerGas;
             uint256 actualTokenNeeded = weiToToken(actualChargeNative, cachedPriceWithMarkup) / tokenDecimalsPower;
-
-            address toCharge = receiver;
-            if(toCharge == address(0)) {
-                toCharge = userOpSender;
-            }
 
             SafeERC20.safeTransferFrom(
                 token,
@@ -222,6 +226,63 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
             unwrapWeth(swappedWeth);
             entryPoint.depositTo{value: address(this).balance}(address(this));
         }
+    }
+
+    function quoteCrossChainDeposit(
+        uint16 targetChain
+    ) public view returns (uint256 cost) {
+        uint256 deliveryCost;
+        (deliveryCost, ) = wormholeRelayer.quoteEVMDeliveryPrice(
+            targetChain,
+            0,
+            GAS_LIMIT
+        );
+
+        uint nativeTokenCost = deliveryCost + wormhole.messageFee();
+        cost = weiToToken(nativeTokenCost, cachedPrice) / tokenDecimalsPower;
+    }
+
+    function transferReceiverPay(
+        address recipient,
+        uint16 targetChain,
+        uint256 amount,
+        address transferToken
+    ) external {
+        SimpleAccount account = SimpleAccount(payable(recipient));
+        require(account.isThisASimpleAccountContract() == true, "PAE: not account");
+        require(account.letCollectOnDeliver() == true, "PAE: cant pay");
+
+        if(targetChain != 0) {
+            uint256 cost = quoteCrossChainDeposit(targetChain);
+            SafeERC20.safeTransferFrom(token, recipient, address(this), cost);
+            this.sendCrossChainDeposit(targetChain, msg.sender, recipient, amount, transferToken);
+        } else {
+            SafeERC20.safeTransferFrom(IERC20(transferToken), msg.sender, recipient, amount);
+        }
+    }
+
+    function sendCrossChainDeposit(
+        uint16 targetChain,
+        address sender,
+        address recipient,
+        uint256 amount,
+        address transferToken
+    ) external senderIsValid(sender) {
+        if(msg.sender == sender) {
+            SafeERC20.safeTransferFrom(token, msg.sender, address(this), quoteCrossChainDeposit(targetChain));
+        }
+        SafeERC20.safeTransferFrom(IERC20(transferToken), sender, address(this), amount);
+
+        bytes memory payload = abi.encode(recipient);
+        sendTokenWithPayloadToEvm(
+            targetChain,
+            address(this),
+            payload,
+            0,
+            GAS_LIMIT,
+            transferToken,
+            amount
+        );
     }
 
     receive() external payable {

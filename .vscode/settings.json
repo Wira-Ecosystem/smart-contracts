@@ -5,6 +5,7 @@
         "@chainlink/contracts-ccip@1.6.0-beta.3/=node_modules/@chainlink/contracts-ccip/",
         "@chainlink/contracts@1.4.0/=node_modules/@chainlink/contracts/",
         "@uniswap/v3-periphery/=lib/v3-periphery/",
-        "@uniswap/v3-core/=lib/v3-core/"
+        "@uniswap/v3-core/=lib/v3-core/",
+        "@wormhole/=lib/wormhole-solidity-sdk/"
     ]
 }

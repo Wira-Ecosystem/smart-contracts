@@ -12,9 +12,11 @@ contract WalletAccountFactoryScript is Script {
 
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY"); // Fetch the private key from environment variables
+        bytes32 salt = bytes32(uint(287555237));
+
         vm.startBroadcast(deployerPrivateKey); // Start broadcasting transactions
         
-        SimpleAccountFactory walletFactory = new SimpleAccountFactory(ENTRYPOINT); // Initialize the WalletFactory contract
+        SimpleAccountFactory walletFactory = new SimpleAccountFactory{salt: salt}(ENTRYPOINT); // Initialize the WalletFactory contract
         console.log(address(walletFactory));
 
         vm.stopBroadcast(); // Stop broadcasting transactions

@@ -18,17 +18,19 @@ contract TokenPaymasterTest is Test {
     SimpleAccountFactory factory = new SimpleAccountFactory(entrypoint);
 
     PackedUserOperation public testUserOp = PackedUserOperation({
-        sender: address(0x123),
+        sender: address(0x169),
         nonce: 1,
         initCode: hex"636F6E7374727563746F722875696E7429",
         callData: hex"65786563757465286279746573206461746129",
         accountGasLimits: bytes32("7D0"),
         preVerificationGas: 1_000,
         gasFees: bytes32("2710"),
-        paymasterAndData: hex"68D985441429561E1d8eb9274A0483462B229FBb",
+        paymasterAndData: abi.encodePacked(0x68D985441429561E1d8eb9274A0483462B229FBb, uint128(10), uint128(41000)),
         signature: hex"8B89386EA80D89"
     });
 
+    //Token to execute crosschain transfers: Testnet USDC
+    IERC20 transferToken = IERC20(0x5fd84259d66Cd46123540766Be93DFE6D43130D7);
     //Token used to pay gas
     IERC20Metadata gasToken = IERC20Metadata(vm.envAddress("GAS_TOKEN"));
     //Wrapped native token to swap from gas token to native token
@@ -69,7 +71,34 @@ contract TokenPaymasterTest is Test {
         uniswapPoolFee: 3000           // 0.3% pool fee (3000 = 0.3%)
     });
 
+    //Wormhole contracts
+    mapping(uint256 => address) private cores;
+    mapping(uint256 => address) private relayers;
+    mapping(uint256 => address) private bridges;
+
     function newTokenPaymaster(address owner) public returns (TokenPaymaster) {
+        //Wormhole OP sepolia contracts
+        cores[11155420] = 0x31377888146f3253211EFEf5c676D41ECe7D58Fe;
+        relayers[11155420] = 0x93BAD53DDfB6132b0aC8E37f6029163E63372cEE;
+        bridges[11155420] = 0x99737Ec4B815d816c49A385943baf0380e75c0Ac;
+
+        //Wormhole Polygon Amoy contracts
+        cores[80002] = 0x6b9C8671cdDC8dEab9c719bB87cBd3e782bA6a35;
+        relayers[80002] = 0x362fca37E45fe1096b42021b543f462D49a5C8df;
+        bridges[80002] = 0xC7A204bDBFe983FCD8d8E61D02b475D4073fF97e;
+
+        //Wormhole Base Sepolia contracts
+        cores[84532] = 0x79A1027a6A159502049F10906D333EC57E95F083;
+        relayers[84532] = 0x93BAD53DDfB6132b0aC8E37f6029163E63372cEE;
+        bridges[84532] = 0x86F55A04690fd7815A3D802bD587e83eA888B239;
+
+        //Wormhole Arbitrum Sepolia contracts
+        cores[421614] = 0x6b9C8671cdDC8dEab9c719bB87cBd3e782bA6a35;
+        relayers[421614] = 0x7B1bD7a6b4E61c2a123AC6BC2cbfC614437D0470;
+        bridges[421614] = 0xC7A204bDBFe983FCD8d8E61D02b475D4073fF97e;
+
+        require(cores[block.chainid] != address(0), "Chain not supported");
+
         return new TokenPaymaster(
             gasToken,
             12,  //18 - 12 = 6 token decimals
@@ -79,7 +108,10 @@ contract TokenPaymasterTest is Test {
             tokenPaymasterConfig,
             oracleHelperConfig,
             uniswapHelperConfig,
-            owner  // Set the contract owner to the deployer
+            owner,  // Set the contract owner to the deployer
+            relayers[block.chainid],
+            bridges[block.chainid],
+            cores[block.chainid]
         );
     }
 
@@ -281,128 +313,59 @@ contract TokenPaymasterTest is Test {
         p.validatePaymasterUserOp(testUserOp, "", 0);
     }
 
-    function test_validatePaymasterUserOp_failOn_paymasterAndData_empty() public {
+    function test_validatePaymasterUserOp_failOn_senderWithoutGas() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
 
-        PackedUserOperation memory modifiedUserOp = testUserOp;
-        modifiedUserOp.paymasterAndData = hex""; //empty data
-
-        vm.expectRevert(bytes("TPM: invalid data length"));
+        p.updateCachedPrice(false);
+        vm.expectRevert(bytes("Not enough gas"));
         vm.prank(address(entrypoint));
-        p.validatePaymasterUserOp(modifiedUserOp, "", 0);
+        p.validatePaymasterUserOp(testUserOp, "", 4e12); //there must be at least 0.008 USDT
     }
 
-    function test_validatePaymasterUserOp_failOn_paymasterAndData_haveInvalidData() public {
+    function test_validatePaymasterUserOp_failOn_senderWithoutApprovedGas() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
 
-        PackedUserOperation memory modifiedUserOp = testUserOp;
-        modifiedUserOp.paymasterAndData = hex"1234"; //random data
+        //fund sender with 10 gas tokens
+        stdstore.target(address(gasToken))
+            .sig(gasToken.balanceOf.selector)
+            .with_key(testUserOp.sender)
+            .checked_write(10e6);
 
-        vm.expectRevert(bytes("TPM: invalid data length"));
+        p.updateCachedPrice(false);
+        vm.expectRevert(bytes("Not enough gas allowance"));
         vm.prank(address(entrypoint));
-        p.validatePaymasterUserOp(modifiedUserOp, "", 0);
-    }
-
-    function test_validatePaymasterUserOp_success_withoutReceiver() public {
-        address owner = address(0x123);
-        TokenPaymaster p = newTokenPaymaster(owner);
-
-        PackedUserOperation memory modifiedUserOp = testUserOp;
-        modifiedUserOp.paymasterAndData = abi.encodePacked(address(p), uint(0)); //address + empty suffix
-
-        vm.prank(address(entrypoint));
-        (, uint256 validationResult) = p.validatePaymasterUserOp(modifiedUserOp, "", 0);
-
-        //check if validationResult ends with 0 (success)
-        assertEq(validationResult % 10, 0);
-    }
-
-    function test_validatePaymasterUserOp_failOn_ReceiverNotAccount() public {
-        address owner = address(0x123);
-        TokenPaymaster p = newTokenPaymaster(owner);
-
-        PackedUserOperation memory modifiedUserOp = testUserOp;
-        modifiedUserOp.paymasterAndData = abi.encodePacked(address(p), uint(0), abi.encode(address(0x456))); //send random as receiver address
-
-        vm.expectRevert();
-        vm.prank(address(entrypoint));
-        p.validatePaymasterUserOp(modifiedUserOp, "", 0);
-    }
-
-    function test_validatePaymasterUserOp_failOn_ReceiverRejectPay() public {
-        address owner = address(0x123);
-        TokenPaymaster p = newTokenPaymaster(owner);
-
-        vm.startPrank(address(0x123));
-        SimpleAccount acc = factory.createAccount(address(0x123), 123456);
-        //check receiver account will reject payment
-        assertEq(acc.letCollectOnDeliver(), false);
-        vm.stopPrank();
-
-        PackedUserOperation memory modifiedUserOp = testUserOp;
-        modifiedUserOp.paymasterAndData = abi.encodePacked(address(p), uint(0), abi.encode(address(acc))); //send account as receiver
-
-        vm.expectRevert("PAE: cant pay");
-        vm.prank(address(entrypoint));
-        p.validatePaymasterUserOp(modifiedUserOp, "", 0);
-    }
-
-    function test_validatePaymasterUserOp_failOn_toIsNotReceiver() public {
-        address owner = address(0x123);
-        TokenPaymaster p = newTokenPaymaster(owner);
-
-        //Set account to accept to pay
-        vm.startPrank(address(0x123));
-        SimpleAccount acc = factory.createAccount(address(0x123), 123456);
-        acc.setCollectOnDeliver(true);
-        assertEq(acc.letCollectOnDeliver(), true);
-        vm.stopPrank();
-
-        PackedUserOperation memory modifiedUserOp = testUserOp;
-        //set on callData: execute functon, transfer random address, 5 tokens (6 decimals)
-        modifiedUserOp.callData = bytes.concat(
-            SimpleAccount.execute.selector,
-            abi.encode(address(0x789)),
-            abi.encode(uint(5e6))
-        );
-        modifiedUserOp.paymasterAndData = abi.encodePacked(address(p), uint(0), abi.encode(address(acc))); //send account as receiver
-
-        vm.expectRevert("PAE: invalid pay");
-        vm.prank(address(entrypoint));
-        p.validatePaymasterUserOp(modifiedUserOp, "", 0);
+        p.validatePaymasterUserOp(testUserOp, "", 4e12); //there must be at least 0.008 USDT
     }
 
     function test_validatePaymasterUserOp_returns_receiverAddress() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
 
-        //Set account to accept to pay
-        vm.startPrank(address(0x123));
-        SimpleAccount acc = factory.createAccount(address(0x123), 123456);
-        acc.setCollectOnDeliver(true);
-        assertEq(acc.letCollectOnDeliver(), true);
-        vm.stopPrank();
-
         PackedUserOperation memory modifiedUserOp = testUserOp;
-        //set on callData: execute functon, transfer random address, 5 tokens (6 decimals)
-        modifiedUserOp.callData = bytes.concat(
+        modifiedUserOp.callData = abi.encodeWithSelector(
             SimpleAccount.execute.selector,
-            abi.encode(address(acc)),
-            abi.encode(uint(5e6))
+            address(p),
+            0,
+            abi.encodeWithSelector(
+                TokenPaymaster.transferReceiverPay.selector,
+                address(0x456),
+                0,
+                5e4,
+                address(gasToken)
+            )
         );
-        modifiedUserOp.paymasterAndData = abi.encodePacked(address(p), uint(0), abi.encode(address(acc))); //send account as receiver
 
         vm.prank(address(entrypoint));
-        (bytes memory context, uint256 validationResult) = p.validatePaymasterUserOp(modifiedUserOp, "", 0);
+        (bytes memory context, uint256 validationResult) = p.validatePaymasterUserOp(modifiedUserOp, "", 4e12);
 
         assertEq(validationResult % 10, 0);
         
         //Check receiver and sender are in context
-        (address userOpSender, address receiver) = abi.decode(context, (address, address));
+        (address userOpSender, address toCharge) = abi.decode(context, (address, address));
         assertEq(userOpSender, modifiedUserOp.sender);
-        assertEq(receiver, address(acc));
+        assertEq(toCharge, address(0x456));
     }
 
     function test_postOp_failOn_noEntrypointCall() public {
@@ -454,6 +417,293 @@ contract TokenPaymasterTest is Test {
 
         vm.prank(address(entrypoint));
         p.postOp(IPaymaster.PostOpMode.opSucceeded, abi.encode(sender, receiver), actualGasCost, actualUserOpFeePerGas);
-        console.log(gasToken.balanceOf(receiver));
+    }
+
+    function test_transferReceiverPay_failOn_ReceiverNotAccount() public {
+        address owner = address(0x123);
+        TokenPaymaster p = newTokenPaymaster(owner);
+
+        vm.expectRevert();
+        p.transferReceiverPay(
+            address(0x826),
+            1,
+            1000,
+            address(gasToken)
+        );
+    }
+
+    function test_transferReceiverPay_failOn_ReceiverRejectPay() public {
+        address owner = address(0x123);
+        TokenPaymaster p = newTokenPaymaster(owner);
+
+        vm.startPrank(address(0x456));
+        SimpleAccount acc = factory.createAccount(address(0x456), 123456);
+        //check receiver account will reject payment
+        assertEq(acc.letCollectOnDeliver(), false);
+        vm.stopPrank();
+
+        vm.expectRevert("PAE: cant pay");
+        p.transferReceiverPay(
+            address(acc),
+            1,
+            1000,
+            address(gasToken)
+        );
+    }
+
+    function test_transferReceiverPay_failOn_SenderWithoutBalance() public {
+        address owner = address(0x123);
+        TokenPaymaster p = newTokenPaymaster(owner);
+
+        vm.startPrank(address(0x456));
+        SimpleAccount acc = factory.createAccount(address(0x456), 123456);
+        acc.setCollectOnDeliver(true);
+        assertEq(acc.letCollectOnDeliver(), true);
+        vm.stopPrank();
+
+        vm.expectRevert();
+        p.transferReceiverPay(
+            address(acc),
+            0,
+            5e4,
+            address(gasToken)
+        );
+    }
+
+    function test_transferReceiverPay_failOn_SenderWithoutApprovedBalance() public {
+        address owner = address(0x123);
+        TokenPaymaster p = newTokenPaymaster(owner);
+
+        vm.startPrank(address(0x456));
+        SimpleAccount acc = factory.createAccount(address(0x456), 123456);
+        acc.setCollectOnDeliver(true);
+        assertEq(acc.letCollectOnDeliver(), true);
+        vm.stopPrank();
+
+        address sender = address(0x546);
+        //fund sender with 10 gas tokens
+        stdstore.target(address(gasToken))
+            .sig(gasToken.balanceOf.selector)
+            .with_key(sender)
+            .checked_write(10e6);
+        
+        vm.expectRevert();
+        vm.prank(sender);
+        p.transferReceiverPay(
+            address(acc),
+            0,
+            5e4,
+            address(gasToken)
+        );
+    }
+
+    function test_transferReceiverPay_success() public {
+        address owner = address(0x123);
+        TokenPaymaster p = newTokenPaymaster(owner);
+        p.updateCachedPrice(false);
+        //fund payaster with native tokens for fee
+        vm.deal(address(p), 0.5 ether);
+
+        //create receiver wallet
+        vm.startPrank(address(0x456));
+        SimpleAccount acc = factory.createAccount(address(0x456), 123456);
+        acc.setCollectOnDeliver(true);
+        assertEq(acc.letCollectOnDeliver(), true);
+        vm.stopPrank();
+
+        //fund receiver with gas token for fee
+        stdstore.target(address(gasToken))
+            .sig(gasToken.balanceOf.selector)
+            .with_key(address(acc))
+            .checked_write(100e6);
+        vm.prank(address(acc));
+        gasToken.approve(address(p), 100e6);
+
+        address sender = address(0x546);
+        //fund sender with USDC to transfer
+        stdstore.target(address(transferToken))
+            .sig(transferToken.balanceOf.selector)
+            .with_key(sender)
+            .checked_write(10e6);
+
+        vm.startPrank(sender);
+        transferToken.approve(address(p), 1e6);
+        
+        p.transferReceiverPay(
+            address(acc),
+            10003,
+            1e6,
+            address(transferToken)
+        );
+        vm.stopPrank();
+
+        assertEq(address(p).balance < 0.5 ether, true);
+        assertEq(gasToken.balanceOf(address(acc)) < 100e6, true);
+        assertEq(transferToken.allowance(sender, address(p)), 0);
+        assertEq(transferToken.balanceOf(sender), 9e6);
+    }
+
+    function test_quoteCrossChainDeposit_return_inGasToken() public {
+        address owner = address(0x123);
+        TokenPaymaster p = newTokenPaymaster(owner);
+        p.updateCachedPrice(false);
+        //check for arbitrum sepolia
+        uint cost = p.quoteCrossChainDeposit(10003);
+        //Cost must be in gas Token: USDT
+        //On testnets, gas is high
+        //With 1 ETH = 2000 USDT, cost must be near 30 USDT
+        assertEq(cost >= 20e6, true);
+        assertEq(cost <= 40e6, true);
+    }
+
+    function test_sendCrossChainDeposit_failOn_senderIsAny() public {
+        address owner = address(0x123);
+        TokenPaymaster p = newTokenPaymaster(owner);
+        p.updateCachedPrice(false);
+
+        address sender = address(0x246);
+
+        vm.expectRevert(bytes("Sender must be contract itself or msg.sender"));
+        vm.startPrank(sender);
+        p.sendCrossChainDeposit(
+            10003,
+            address(0x789),     //sender is not msg.sender
+            address(0x912),
+            1e6,
+            address(transferToken)
+        );
+    }
+
+    function test_sendCrossChainDeposit_failOn_senderWithoutGas() public {
+        address owner = address(0x123);
+        TokenPaymaster p = newTokenPaymaster(owner);
+        p.updateCachedPrice(false);
+
+        address sender = address(0x246);
+
+        vm.expectRevert();
+        vm.prank(sender);
+        p.sendCrossChainDeposit(
+            10003,
+            address(sender),
+            address(0x912),
+            1e6,
+            address(transferToken)
+        );
+    }
+
+    function test_sendCrossChainDeposit_failOn_senderWithoutApprovedGas() public {
+        address owner = address(0x123);
+        TokenPaymaster p = newTokenPaymaster(owner);
+        p.updateCachedPrice(false);
+
+        address sender = address(0x246);
+        stdstore.target(address(gasToken))
+            .sig(gasToken.balanceOf.selector)
+            .with_key(sender)
+            .checked_write(100e6);
+
+        vm.expectRevert();
+        vm.prank(sender);
+        p.sendCrossChainDeposit(
+            10003,
+            address(sender),
+            address(0x912),
+            1e6,
+            address(transferToken)
+        );
+    }
+
+    function test_sendCrossChainDeposit_failOn_senderWithoutTokenToSend() public {
+        address owner = address(0x123);
+        TokenPaymaster p = newTokenPaymaster(owner);
+        p.updateCachedPrice(false);
+
+        address sender = address(0x246);
+        stdstore.target(address(gasToken))
+            .sig(gasToken.balanceOf.selector)
+            .with_key(sender)
+            .checked_write(100e6);
+
+        vm.startPrank(sender);
+        gasToken.approve(address(p), 90e6);
+        transferToken.approve(address(p), 1e6);
+        
+        vm.expectRevert(bytes("ERC20: transfer amount exceeds balance"));
+        p.sendCrossChainDeposit(
+            10003,
+            address(sender),
+            address(0x912),
+            1e6,
+            address(transferToken)
+        );
+        vm.stopPrank();
+    }
+
+    function test_sendCrossChainDeposit_failOn_senderWithoutApprovedTokenToSend() public {
+        address owner = address(0x123);
+        TokenPaymaster p = newTokenPaymaster(owner);
+        p.updateCachedPrice(false);
+
+        address sender = address(0x246);
+        stdstore.target(address(gasToken))
+            .sig(gasToken.balanceOf.selector)
+            .with_key(sender)
+            .checked_write(100e6);
+        stdstore.target(address(transferToken))
+            .sig(transferToken.balanceOf.selector)
+            .with_key(sender)
+            .checked_write(10e6);
+
+        vm.startPrank(sender);
+        gasToken.approve(address(p), 90e6);
+        
+        vm.expectRevert(bytes("ERC20: transfer amount exceeds allowance"));
+        p.sendCrossChainDeposit(
+            10003,
+            address(sender),
+            address(0x912),
+            1e6,
+            address(transferToken)
+        );
+        vm.stopPrank();
+    }
+
+    function test_sendCrossChainDeposit_success() public {
+        address owner = address(0x123);
+        TokenPaymaster p = newTokenPaymaster(owner);
+        p.updateCachedPrice(false);
+
+        //fund paymaster with native tokens
+        vm.deal(payable(address(p)), 0.5 ether);
+
+        address sender = address(0x246);
+        //fund sender with gas and USDC to transfer
+        stdstore.target(address(gasToken))
+            .sig(gasToken.balanceOf.selector)
+            .with_key(sender)
+            .checked_write(100e6);
+        stdstore.target(address(transferToken))
+            .sig(transferToken.balanceOf.selector)
+            .with_key(sender)
+            .checked_write(10e6);
+
+        vm.startPrank(sender);
+        gasToken.approve(address(p), 90e6);
+        transferToken.approve(address(p), 1e6);
+        
+        p.sendCrossChainDeposit(
+            10003,
+            address(sender),
+            address(0x912),
+            1e6,
+            address(transferToken)
+        );
+        vm.stopPrank();
+
+        assertEq(address(p).balance < 0.5 ether, true);
+        assertEq(gasToken.balanceOf(sender) < 100e6, true);
+        assertEq(transferToken.allowance(sender, address(p)), 0);
+        assertEq(transferToken.balanceOf(sender), 9e6);
     }
 }
