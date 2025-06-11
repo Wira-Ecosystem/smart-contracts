@@ -19,6 +19,8 @@ contract Guardian {
         uint256 proposedAt;
     }
 
+
+
     struct GuardianInfo {
         Status state;
         uint40 invitedAt;
