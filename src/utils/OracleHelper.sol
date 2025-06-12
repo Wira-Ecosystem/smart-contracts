@@ -15,6 +15,9 @@ abstract contract OracleHelper {
     event TokenPriceUpdated(uint256 currentPrice, uint256 previousPrice, uint256 cachedPriceTimestamp);
 
     uint256 private constant PRICE_DENOMINATOR = 1e26;
+    
+    /// @notice Token used decimals power
+    uint256 public tokenDecimalsPower;
 
     struct OracleHelperConfig {
 
@@ -60,8 +63,10 @@ abstract contract OracleHelper {
     uint128 private nativeOracleDecimalPower;
 
     constructor (
-        OracleHelperConfig memory _oracleHelperConfig
+        OracleHelperConfig memory _oracleHelperConfig,
+        uint8 _tokenDecimals
     ) {
+        tokenDecimalsPower = 10 ** _tokenDecimals;
         cachedPrice = type(uint256).max; // initialize the storage slot to invalid value
         _setOracleConfiguration(
             _oracleHelperConfig

@@ -9,8 +9,6 @@ import "@account-abstraction/interfaces/IEntryPoint.sol";
 import "@account-abstraction/core/BasePaymaster.sol";
 import "@account-abstraction/core/Helpers.sol";
 
-import "./utils/UniswapHelper.sol";
-import "./utils/OracleHelper.sol";
 import {SimpleAccount} from "./SimpleAccount.sol";
 import "./transferer/CrossChainTransferer.sol";
 
@@ -25,7 +23,7 @@ import "./transferer/CrossChainTransferer.sol";
 /// It also allows updating price configuration and withdrawing tokens by the contract owner.
 /// The contract uses an Oracle to fetch the latest token prices.
 /// @dev Inherits from BasePaymaster.
-contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper, CrossChainTransferer {
+contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
 
     using UserOperationLib for PackedUserOperation;
 
@@ -52,15 +50,7 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper, CrossChai
     /// @notice All 'price' variables are multiplied by this value to avoid rounding up
     uint256 private constant PRICE_DENOMINATOR = 1e26;
 
-    /// @notice Token used decimals power
-    uint256 public tokenDecimalsPower;
-
     TokenPaymasterConfig public tokenPaymasterConfig;
-
-    modifier senderIsValid(address sender) {
-        require(msg.sender == address(this) || msg.sender == sender, "Sender must be contract itself or msg.sender");
-        _;
-    }
 
     /// @notice Initializes the TokenPaymaster contract with the given parameters.
     /// @param _token The ERC20 token used for transaction fee payments.
@@ -88,22 +78,18 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper, CrossChai
     BasePaymaster(
     _entryPoint
     )
-    OracleHelper(
-    _oracleHelperConfig
-    )
-    UniswapHelper(
-    _token,
-    _wrappedNative,
-    _uniswap,
-    _uniswapHelperConfig
-    )
     CrossChainTransferer(
+        _token,
+        _tokenDecimals,
+        _wrappedNative,
+        _uniswap,
+        _oracleHelperConfig,
+        _uniswapHelperConfig,
         _wormholeRelayer,
         _tokenBridge,
         _wormhole
     )
     {
-        tokenDecimalsPower = 10 ** _tokenDecimals;
         setTokenPaymasterConfig(_tokenPaymasterConfig);
         transferOwnership(_owner);
     }
@@ -227,20 +213,6 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper, CrossChai
         }
     }
 
-    function quoteCrossChainDeposit(
-        uint16 targetChain
-    ) public view returns (uint256 cost) {
-        uint256 deliveryCost;
-        (deliveryCost, ) = wormholeRelayer.quoteEVMDeliveryPrice(
-            targetChain,
-            0,
-            GAS_LIMIT
-        );
-
-        uint nativeTokenCost = deliveryCost + wormhole.messageFee();
-        cost = weiToToken(nativeTokenCost, cachedPrice) / tokenDecimalsPower;
-    }
-
     function transferReceiverPay(
         address recipient,
         uint16 targetChain,
@@ -258,30 +230,6 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper, CrossChai
         } else {
             SafeERC20.safeTransferFrom(IERC20(transferToken), msg.sender, recipient, amount);
         }
-    }
-
-    function sendCrossChainDeposit(
-        uint16 targetChain,
-        address sender,
-        address recipient,
-        uint256 amount,
-        address transferToken
-    ) external senderIsValid(sender) {
-        if(msg.sender == sender) {
-            SafeERC20.safeTransferFrom(token, msg.sender, address(this), quoteCrossChainDeposit(targetChain));
-        }
-        SafeERC20.safeTransferFrom(IERC20(transferToken), sender, address(this), amount);
-
-        bytes memory payload = abi.encode(recipient);
-        sendTokenWithPayloadToEvm(
-            targetChain,
-            address(this),
-            payload,
-            0,
-            GAS_LIMIT,
-            transferToken,
-            amount
-        );
     }
 
     receive() external payable {
