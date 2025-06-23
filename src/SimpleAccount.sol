@@ -13,6 +13,11 @@ import "@account-abstraction/core/BaseAccount.sol";
 import "@account-abstraction/core/Helpers.sol";
 import "./TokenCallbackHandler.sol";
 
+import {IRouterClient} from "@chainlink/contracts-ccip@1.6.0-beta.3/contracts/interfaces/IRouterClient.sol";
+import {Client} from "@chainlink/contracts-ccip@1.6.0-beta.3/contracts/libraries/Client.sol";
+import {IERC20} from "@chainlink/contracts@1.4.0/src/v0.8/vendor/openzeppelin-solidity/v4.8.3/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@chainlink/contracts@1.4.0/src/v0.8/vendor/openzeppelin-solidity/v4.8.3/contracts/token/ERC20/utils/SafeERC20.sol";
+import "./Guardians.sol";
 /**
   * minimal account.
   *  this is sample minimal account.
@@ -22,15 +27,64 @@ import "./TokenCallbackHandler.sol";
 contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, Initializable {
     address public owner;
     IEntryPoint private immutable _entryPoint;
+    address public guardian;
+    using SafeERC20 for IERC20;
+        mapping(bytes32 => string) private _streamOf;
+
+    error GuardianNotConfigurado();
+
+    // Mapping to keep track of allowlisted destination chains.
+    mapping(uint64 => bool) public allowlistedChains;
+    IRouterClient private immutable s_router;
+    IERC20 private immutable s_linkToken;
 
     bool public immutable isThisASimpleAccountContract = true; //Used to check an address is a SimpleAccount contract
     bool public letCollectOnDeliver; //Collect on deliver option
 
     event SimpleAccountInitialized(IEntryPoint indexed entryPoint, address indexed owner);
+    event OwnerRecovered(address indexed newOwner);
+    event StreamRegistered(bytes32 indexed idHash, string streamId);
 
     modifier onlyOwner() {
         _onlyOwner();
         _;
+    }
+
+    modifier onlyGuardianContract() {
+        require(msg.sender == address(guardian), "Only guardian contract can call");
+        _;
+    }
+
+    function registerStream(
+        bytes32 idHash,
+        string calldata streamId
+    ) external onlyOwner {
+        require(bytes(_streamOf[idHash]).length == 0, "already registered");
+        _streamOf[idHash] = streamId;
+        emit StreamRegistered(idHash, streamId);
+    }
+
+    function getStream(bytes32 idHash) external view returns (string memory) {
+        return _streamOf[idHash];
+    }
+
+     function setGuardian(address _guardian) external onlyOwner {
+        require(_guardian != address(0), "Guardian cannot be zero address");
+        guardian = _guardian;
+    }
+
+    function getGuardian() external view returns (address) {
+        return guardian;
+    }
+
+     function executeRecovery(address newOwner) external {
+        if (guardian == address(0)) revert GuardianNotConfigurado();
+ 
+        require(msg.sender == guardian, "Only guardian can recover");
+        require(newOwner != address(0), "New owner cannot be zero");
+
+        owner = newOwner;
+        emit OwnerRecovered(newOwner);
     }
 
     /// @inheritdoc BaseAccount
@@ -88,6 +142,7 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
      */
     function initialize(address anOwner) public virtual initializer {
         _initialize(anOwner);
+        emit SimpleAccountInitialized(_entryPoint, owner);
     }
 
     function _initialize(address anOwner) internal virtual {
@@ -156,4 +211,3 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
         letCollectOnDeliver = _collectOnDeliver;
     }
 }
-
