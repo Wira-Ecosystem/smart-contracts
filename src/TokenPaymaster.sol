@@ -133,8 +133,7 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
     internal
     view
     override
-    returns (bytes memory context, uint256 validationResult) {unchecked {
-            require(tokenPaymasterConfig.refundPostopCost < userOp.unpackPostOpGasLimit(), "TPM: postOpGasLimit too low");
+    returns (bytes memory context, uint256 validationResult) {
             uint256 preChargeNative = requiredPreFund + (tokenPaymasterConfig.refundPostopCost * userOp.unpackMaxFeePerGas());
             uint256 cachedPriceWithMarkup = cachedPrice * PRICE_DENOMINATOR / tokenPaymasterConfig.priceMarkup;
             uint256 tokenAmount = weiToToken(preChargeNative, cachedPriceWithMarkup) / tokenDecimalsPower;
@@ -154,7 +153,6 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
                 0
             );
         }
-    }
 
     // If receiver will pay for transaction, get their address
     function getReceiverAddressOnPay(bytes calldata callData) private view returns (address receiver) {
@@ -176,7 +174,6 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
     //      and maxPriorityFee (and basefee)
     //      It is not the same as tx.gasprice, which is what the bundler pays.
     function _postOp(PostOpMode, bytes calldata context, uint256 actualGasCost, uint256 actualUserOpFeePerGas) internal override {
-        unchecked {
             (
                 address userOpSender,
                 address toCharge
@@ -197,7 +194,6 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
 
             emit UserOperationSponsored(userOpSender, actualTokenNeeded, actualGasCost, cachedPriceWithMarkup);
             refillEntryPointDeposit(_cachedPrice);
-        }
     }
 
     /// @notice If necessary this function uses this Paymaster's token balance to refill the deposit on EntryPoint
