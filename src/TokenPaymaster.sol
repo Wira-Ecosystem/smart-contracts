@@ -212,6 +212,7 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
     function transferReceiverPay(
         address recipient,
         uint16 targetChain,
+        address targetReceiver,
         uint256 amount,
         address transferToken
     ) external {
@@ -222,7 +223,7 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
         if(targetChain != 0) {
             uint256 cost = quoteCrossChainDeposit(targetChain);
             SafeERC20.safeTransferFrom(token, recipient, address(this), cost);
-            this.sendCrossChainDeposit(targetChain, msg.sender, recipient, amount, transferToken);
+            this.sendCrossChainDeposit(targetChain, targetReceiver, msg.sender, recipient, amount, transferToken);
         } else {
             SafeERC20.safeTransferFrom(IERC20(transferToken), msg.sender, recipient, amount);
         }

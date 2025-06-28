@@ -15,6 +15,7 @@ contract TokenPaymasterScript is Script {
     mapping(uint256 => address) private cores;
     mapping(uint256 => address) private relayers;
     mapping(uint256 => address) private bridges;
+    mapping(uint256 => address) private gasTokens;
 
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY"); // Fetch the private key from environment variables
@@ -23,6 +24,7 @@ contract TokenPaymasterScript is Script {
         cores[11155420] = 0x31377888146f3253211EFEf5c676D41ECe7D58Fe;
         relayers[11155420] = 0x93BAD53DDfB6132b0aC8E37f6029163E63372cEE;
         bridges[11155420] = 0x99737Ec4B815d816c49A385943baf0380e75c0Ac;
+        gasTokens[11155420] = 0x50aA08060b2038EB86F46E3262096097813A3dcf;
 
         //Wormhole Polygon Amoy contracts
         cores[80002] = 0x6b9C8671cdDC8dEab9c719bB87cBd3e782bA6a35;
@@ -33,6 +35,7 @@ contract TokenPaymasterScript is Script {
         cores[84532] = 0x79A1027a6A159502049F10906D333EC57E95F083;
         relayers[84532] = 0x93BAD53DDfB6132b0aC8E37f6029163E63372cEE;
         bridges[84532] = 0x86F55A04690fd7815A3D802bD587e83eA888B239;
+        gasTokens[84532] = 0xB6cbBB295b9cDad7b00A887207d41066ACF47669;
 
         //Wormhole Arbitrum Sepolia contracts
         cores[421614] = 0x6b9C8671cdDC8dEab9c719bB87cBd3e782bA6a35;
@@ -40,9 +43,10 @@ contract TokenPaymasterScript is Script {
         bridges[421614] = 0xC7A204bDBFe983FCD8d8E61D02b475D4073fF97e;
 
         require(cores[block.chainid] != address(0), "Chain not supported");
+        require(gasTokens[block.chainid] != address(0), "Token not exists on chain");
 
         //Token used to pay gas
-        IERC20Metadata gasToken = IERC20Metadata(vm.envAddress("GAS_TOKEN"));
+        IERC20Metadata gasToken = IERC20Metadata(gasTokens[block.chainid]);
         //Wrapped native token to swap from gas token to native token
         IERC20 wrappedNative = IERC20(vm.envAddress("W_NATIVE"));
         //UniSwap router to swap gas
@@ -97,6 +101,7 @@ contract TokenPaymasterScript is Script {
             bridges[block.chainid],
             cores[block.chainid]
         );
+        tokenPaymaster.updateCachedPrice(false);
         console.log("TokenPaymaster deployed at:", address(tokenPaymaster));
 
         vm.stopBroadcast(); // Stop broadcasting transactions
