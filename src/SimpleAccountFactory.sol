@@ -49,16 +49,29 @@ contract SimpleAccountFactory {
             )));
         
         ret.setCreateDebt(gasToDebt);
+    }
 
-        // 2) Despliega el contrato Guardian para esta cuenta
-        Guardian guardianContract = new Guardian(address(ret));
+    function createGuardianForAccount(
+        address account,
+        uint256 salt
+    ) external returns (address) {
+        require(account != address(0), "Invalid account");
+        require(guardianOf[account] == address(0), "Guardian already exists");
 
-        // 3) Llamada setGuardian en la cuenta recién creada
-        //ret.setGuardian(address(guardianContract));
+        require(
+            SimpleAccount(payable(account)).isThisASimpleAccountContract(),
+            "Not a SimpleAccount"
+        );
 
-        // 4) Guarda en el mapping y emite evento
-        guardianOf[address(ret)] = address(guardianContract);
-        emit GuardianCreated(address(ret), address(guardianContract));    
+        bytes32 guardianSalt = keccak256(abi.encodePacked(account, salt));
+        Guardian guardianContract = new Guardian{salt: guardianSalt}(account);
+
+        SimpleAccount(payable(account)).setGuardian(address(guardianContract));
+
+        guardianOf[account] = address(guardianContract);
+        emit GuardianCreated(account, address(guardianContract));
+
+        return address(guardianContract);
     }
 
     /**
@@ -71,6 +84,24 @@ contract SimpleAccountFactory {
                     address(accountImplementation),
                     abi.encodeCall(SimpleAccount.initialize, (owner, address(this)))
                 )
-            )));
+            )
+        ));
+    }
+
+    function getGuardianAddress(
+        address account,
+        uint256 salt
+    ) public view returns (address) {
+        bytes32 guardianSalt = keccak256(abi.encodePacked(account, salt));
+        return
+            Create2.computeAddress(
+                guardianSalt,
+                keccak256(
+                    abi.encodePacked(
+                        type(Guardian).creationCode,
+                        abi.encode(account)
+                    )
+                )
+            );
     }
 }

@@ -69,7 +69,7 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
         return _streamOf[idHash];
     }
 
-     function setGuardian(address _guardian) external onlyOwner {
+     function setGuardian(address _guardian) external {
         require(_guardian != address(0), "Guardian cannot be zero address");
         guardian = _guardian;
     }
