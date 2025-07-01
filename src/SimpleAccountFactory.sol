@@ -13,7 +13,7 @@ import "./Guardians.sol";
  * This way, the entryPoint.getSenderAddress() can be called either before or after the account is created.
  */
 contract SimpleAccountFactory {
-    SimpleAccount public immutable accountImplementation;
+    SimpleAccount public accountImplementation;
     mapping(address => address) public guardianOf;
 
     event AccountCreated(
@@ -23,8 +23,10 @@ contract SimpleAccountFactory {
 
     event GuardianCreated(address indexed account, address indexed guardian);
 
-    constructor(IEntryPoint _entryPoint) {
-        accountImplementation = new SimpleAccount(_entryPoint);
+    constructor() {}
+
+    function initialize(IEntryPoint _entryPoint, address _tokenPaymaster) external {
+        accountImplementation = new SimpleAccount(_entryPoint, _tokenPaymaster);
         emit AccountCreated(block.chainid, address(accountImplementation));
     }
 
@@ -35,6 +37,7 @@ contract SimpleAccountFactory {
      * This method returns an existing account address so that entryPoint.getSenderAddress() would work even after account creation
      */
     function createAccount(address owner,uint256 salt) public returns (SimpleAccount ret) {
+        uint256 gasToDebt = gasleft() + 6000000000;
         address addr = getAddress(owner, salt);
         uint256 codeSize = addr.code.length;
         if (codeSize > 0) {
@@ -42,16 +45,16 @@ contract SimpleAccountFactory {
         }
         ret = SimpleAccount(payable(new ERC1967Proxy{salt : bytes32(salt)}(
                 address(accountImplementation),
-                abi.encodeCall(SimpleAccount.initialize, (owner))
+                abi.encodeCall(SimpleAccount.initialize, (owner, address(this)))
             )));
-
         
+        ret.setCreateDebt(gasToDebt);
 
         // 2) Despliega el contrato Guardian para esta cuenta
         Guardian guardianContract = new Guardian(address(ret));
 
         // 3) Llamada setGuardian en la cuenta recién creada
-        ret.setGuardian(address(guardianContract));
+        //ret.setGuardian(address(guardianContract));
 
         // 4) Guarda en el mapping y emite evento
         guardianOf[address(ret)] = address(guardianContract);
@@ -66,7 +69,7 @@ contract SimpleAccountFactory {
                 type(ERC1967Proxy).creationCode,
                 abi.encode(
                     address(accountImplementation),
-                    abi.encodeCall(SimpleAccount.initialize, (owner))
+                    abi.encodeCall(SimpleAccount.initialize, (owner, address(this)))
                 )
             )));
     }

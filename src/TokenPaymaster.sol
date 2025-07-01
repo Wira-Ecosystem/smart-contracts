@@ -134,7 +134,13 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
     view
     override
     returns (bytes memory context, uint256 validationResult) {
-            uint256 preChargeNative = requiredPreFund + (tokenPaymasterConfig.refundPostopCost * userOp.unpackMaxFeePerGas());
+            uint256 createDebt = 0;
+            (bool success, bytes memory result) = userOp.sender.staticcall(abi.encodeWithSignature("createDebt()"));
+            if(success && result.length > 0) {
+                createDebt = abi.decode(result, (uint256));
+            }
+
+            uint256 preChargeNative = createDebt + requiredPreFund + (tokenPaymasterConfig.refundPostopCost * userOp.unpackMaxFeePerGas());
             uint256 cachedPriceWithMarkup = cachedPrice * PRICE_DENOMINATOR / tokenPaymasterConfig.priceMarkup;
             uint256 tokenAmount = weiToToken(preChargeNative, cachedPriceWithMarkup) / tokenDecimalsPower;
 
@@ -179,10 +185,17 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
                 address toCharge
             ) = abi.decode(context, (address, address));
 
+            uint256 createDebt = 0;
+            (bool success, bytes memory result) = userOpSender.staticcall(abi.encodeWithSignature("createDebt()"));
+            if(success && result.length > 0) {
+                createDebt = abi.decode(result, (uint256));
+            }
+
             //claim actual gas token needed
             uint256 _cachedPrice = updateCachedPrice(false);          
             uint256 cachedPriceWithMarkup = _cachedPrice * PRICE_DENOMINATOR / tokenPaymasterConfig.priceMarkup;
-            uint256 actualChargeNative = actualGasCost + tokenPaymasterConfig.refundPostopCost * actualUserOpFeePerGas;
+
+            uint256 actualChargeNative = createDebt + actualGasCost + tokenPaymasterConfig.refundPostopCost * actualUserOpFeePerGas;
             uint256 actualTokenNeeded = weiToToken(actualChargeNative, cachedPriceWithMarkup) / tokenDecimalsPower;
 
             SafeERC20.safeTransferFrom(
@@ -191,6 +204,10 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
                 address(this),
                 actualTokenNeeded
             );
+
+            if(createDebt > 0) {
+                userOpSender.call(abi.encodeWithSignature("setCreateDebt(uint256)", 0));
+            }
 
             emit UserOperationSponsored(userOpSender, actualTokenNeeded, actualGasCost, cachedPriceWithMarkup);
             refillEntryPointDeposit(_cachedPrice);

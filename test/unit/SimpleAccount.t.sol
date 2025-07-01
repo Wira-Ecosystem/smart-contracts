@@ -14,7 +14,8 @@ contract SimpleAccountTest is Test {
     SimpleAccountFactory factory;
 
     function setUp() public {
-        factory = new SimpleAccountFactory(entrypoint);
+        factory = new SimpleAccountFactory();
+        factory.initialize(entrypoint, address(0x789));
     }
 
     function test_GetDeposit() public {

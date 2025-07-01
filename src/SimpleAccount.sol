@@ -13,10 +13,7 @@ import "@account-abstraction/core/BaseAccount.sol";
 import "@account-abstraction/core/Helpers.sol";
 import "./TokenCallbackHandler.sol";
 
-import {IRouterClient} from "@chainlink/contracts-ccip@1.6.0-beta.3/contracts/interfaces/IRouterClient.sol";
-import {Client} from "@chainlink/contracts-ccip@1.6.0-beta.3/contracts/libraries/Client.sol";
-import {IERC20} from "@chainlink/contracts@1.4.0/src/v0.8/vendor/openzeppelin-solidity/v4.8.3/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@chainlink/contracts@1.4.0/src/v0.8/vendor/openzeppelin-solidity/v4.8.3/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./Guardians.sol";
 /**
   * minimal account.
@@ -28,18 +25,17 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
     address public owner;
     IEntryPoint private immutable _entryPoint;
     address public guardian;
+    address public factory;
+    address public immutable tokenPaymaster;
+
     using SafeERC20 for IERC20;
-        mapping(bytes32 => string) private _streamOf;
+    mapping(bytes32 => string) private _streamOf;
 
     error GuardianNotConfigurado();
 
-    // Mapping to keep track of allowlisted destination chains.
-    mapping(uint64 => bool) public allowlistedChains;
-    IRouterClient private immutable s_router;
-    IERC20 private immutable s_linkToken;
-
-    bool public immutable isThisASimpleAccountContract = true; //Used to check an address is a SimpleAccount contract
-    bool public letCollectOnDeliver; //Collect on deliver option
+    bool public immutable isThisASimpleAccountContract = true;
+    bool public letCollectOnDeliver;
+    uint256 public createDebt;
 
     event SimpleAccountInitialized(IEntryPoint indexed entryPoint, address indexed owner);
     event OwnerRecovered(address indexed newOwner);
@@ -47,6 +43,11 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
 
     modifier onlyOwner() {
         _onlyOwner();
+        _;
+    }
+
+    modifier onlyFactoryOrPaymaster() {
+        require(msg.sender == tokenPaymaster || msg.sender == factory, "Only factory or paymaster");
         _;
     }
 
@@ -77,7 +78,7 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
         return guardian;
     }
 
-     function executeRecovery(address newOwner) external {
+    function executeRecovery(address newOwner) external {
         if (guardian == address(0)) revert GuardianNotConfigurado();
  
         require(msg.sender == guardian, "Only guardian can recover");
@@ -92,8 +93,9 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
         return _entryPoint;
     }
 
-    constructor(IEntryPoint anEntryPoint) {
+    constructor(IEntryPoint anEntryPoint, address _tokenPaymaster) {
         _entryPoint = anEntryPoint;
+        tokenPaymaster = _tokenPaymaster;
         _disableInitializers();
     }
 
@@ -140,13 +142,14 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
       * the implementation by calling `upgradeTo()`
       * @param anOwner the owner (signer) of this account
      */
-    function initialize(address anOwner) public virtual initializer {
-        _initialize(anOwner);
+    function initialize(address anOwner, address itsFactory) public virtual initializer {
+        _initialize(anOwner, itsFactory);
         emit SimpleAccountInitialized(_entryPoint, owner);
     }
 
-    function _initialize(address anOwner) internal virtual {
+    function _initialize(address anOwner, address itsFactory) internal virtual {
         owner = anOwner;
+        factory = itsFactory;
         emit SimpleAccountInitialized(_entryPoint, owner);
     }
 
@@ -209,5 +212,10 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
     /// @notice active/disable option to pay gas of receiving transfers
     function setCollectOnDeliver(bool _collectOnDeliver) external onlyOwner {
         letCollectOnDeliver = _collectOnDeliver;
+    }
+
+    /// @notice check create debt to paid (only paymaster or factory)
+    function setCreateDebt(uint256 debt) external onlyFactoryOrPaymaster {
+        createDebt = debt;
     }
 }
