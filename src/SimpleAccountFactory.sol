@@ -51,9 +51,18 @@ contract SimpleAccountFactory {
 
         address currentRouter = routers[block.chainid];
         address currentLink = links[block.chainid];
-        accountImplementation = new SimpleAccount(_entryPoint, currentRouter, currentLink);
+        accountImplementation = new SimpleAccount(
+            _entryPoint,
+            currentRouter,
+            currentLink
+        );
 
-        emit AccountCreated(block.chainid, currentRouter, currentLink, address(accountImplementation));
+        emit AccountCreated(
+            block.chainid,
+            currentRouter,
+            currentLink,
+            address(accountImplementation)
+        );
     }
 
     /**
@@ -62,40 +71,84 @@ contract SimpleAccountFactory {
      * Note that during UserOperation execution, this method is called only if the account is not deployed.
      * This method returns an existing account address so that entryPoint.getSenderAddress() would work even after account creation
      */
-    function createAccount(address owner,uint256 salt) public returns (SimpleAccount ret) {
+    function createAccount(
+        address owner,
+        uint256 salt
+    ) public returns (SimpleAccount ret) {
         address addr = getAddress(owner, salt);
         uint256 codeSize = addr.code.length;
         if (codeSize > 0) {
             return SimpleAccount(payable(addr));
         }
-        ret = SimpleAccount(payable(new ERC1967Proxy{salt : bytes32(salt)}(
-                address(accountImplementation),
-                abi.encodeCall(SimpleAccount.initialize, (owner))
-            )));
+        ret = SimpleAccount(
+            payable(
+                new ERC1967Proxy{salt: bytes32(salt)}(
+                    address(accountImplementation),
+                    abi.encodeCall(SimpleAccount.initialize, (owner))
+                )
+            )
+        );
+    }
 
-        
+    function createGuardianForAccount(
+        address account,
+        uint256 salt
+    ) external returns (address) {
+        require(account != address(0), "Invalid account");
+        require(guardianOf[account] == address(0), "Guardian already exists");
 
-        // 2) Despliega el contrato Guardian para esta cuenta
-        Guardian guardianContract = new Guardian(address(ret));
+        require(
+            SimpleAccount(payable(account)).isThisASimpleAccountContract(),
+            "Not a SimpleAccount"
+        );
 
-        // 3) Llamada setGuardian en la cuenta recién creada
-        ret.setGuardian(address(guardianContract));
+        bytes32 guardianSalt = keccak256(abi.encodePacked(account, salt));
+        Guardian guardianContract = new Guardian{salt: guardianSalt}(account);
 
-        // 4) Guarda en el mapping y emite evento
-        guardianOf[address(ret)] = address(guardianContract);
-        emit GuardianCreated(address(ret), address(guardianContract));    
+        SimpleAccount(payable(account)).setGuardian(address(guardianContract));
+
+        guardianOf[account] = address(guardianContract);
+        emit GuardianCreated(account, address(guardianContract));
+
+        return address(guardianContract);
     }
 
     /**
      * calculate the counterfactual address of this account as it would be returned by createAccount()
      */
-    function getAddress(address owner,uint256 salt) public view returns (address) {
-        return Create2.computeAddress(bytes32(salt), keccak256(abi.encodePacked(
-                type(ERC1967Proxy).creationCode,
-                abi.encode(
-                    address(accountImplementation),
-                    abi.encodeCall(SimpleAccount.initialize, (owner))
+    function getAddress(
+        address owner,
+        uint256 salt
+    ) public view returns (address) {
+        return
+            Create2.computeAddress(
+                bytes32(salt),
+                keccak256(
+                    abi.encodePacked(
+                        type(ERC1967Proxy).creationCode,
+                        abi.encode(
+                            address(accountImplementation),
+                            abi.encodeCall(SimpleAccount.initialize, (owner))
+                        )
+                    )
                 )
-            )));
+            );
+    }
+
+    function getGuardianAddress(
+        address account,
+        uint256 salt
+    ) public view returns (address) {
+        bytes32 guardianSalt = keccak256(abi.encodePacked(account, salt));
+        return
+            Create2.computeAddress(
+                guardianSalt,
+                keccak256(
+                    abi.encodePacked(
+                        type(Guardian).creationCode,
+                        abi.encode(account)
+                    )
+                )
+            );
     }
 }
