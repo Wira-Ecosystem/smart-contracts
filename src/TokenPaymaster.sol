@@ -8,9 +8,9 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@account-abstraction/interfaces/IEntryPoint.sol";
 import "@account-abstraction/core/BasePaymaster.sol";
 import "@account-abstraction/core/Helpers.sol";
-import "./utils/UniswapHelper.sol";
-import "./utils/OracleHelper.sol";
+
 import {SimpleAccount} from "./SimpleAccount.sol";
+import "./transferer/CrossChainTransferer.sol";
 
 /// @title Sample ERC-20 Token Paymaster for ERC-4337
 /// This Paymaster covers gas fees in exchange for ERC20 tokens charged using allowance pre-issued by ERC-4337 accounts.
@@ -23,7 +23,7 @@ import {SimpleAccount} from "./SimpleAccount.sol";
 /// It also allows updating price configuration and withdrawing tokens by the contract owner.
 /// The contract uses an Oracle to fetch the latest token prices.
 /// @dev Inherits from BasePaymaster.
-contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
+contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
 
     using UserOperationLib for PackedUserOperation;
 
@@ -50,9 +50,6 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
     /// @notice All 'price' variables are multiplied by this value to avoid rounding up
     uint256 private constant PRICE_DENOMINATOR = 1e26;
 
-    /// @notice Token used decimals power
-    uint256 public tokenDecimalsPower;
-
     TokenPaymasterConfig public tokenPaymasterConfig;
 
     /// @notice Initializes the TokenPaymaster contract with the given parameters.
@@ -73,22 +70,26 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
         TokenPaymasterConfig memory _tokenPaymasterConfig,
         OracleHelperConfig memory _oracleHelperConfig,
         UniswapHelperConfig memory _uniswapHelperConfig,
-        address _owner
+        address _owner,
+        address _wormholeRelayer,
+        address _tokenBridge,
+        address _wormhole
     )
     BasePaymaster(
     _entryPoint
     )
-    OracleHelper(
-    _oracleHelperConfig
-    )
-    UniswapHelper(
-    _token,
-    _wrappedNative,
-    _uniswap,
-    _uniswapHelperConfig
+    CrossChainTransferer(
+        _token,
+        _tokenDecimals,
+        _wrappedNative,
+        _uniswap,
+        _oracleHelperConfig,
+        _uniswapHelperConfig,
+        _wormholeRelayer,
+        _tokenBridge,
+        _wormhole
     )
     {
-        tokenDecimalsPower = 10 ** _tokenDecimals;
         setTokenPaymasterConfig(_tokenPaymasterConfig);
         transferOwnership(_owner);
     }
@@ -128,47 +129,47 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
     /// @param userOp The user operation data.
     /// @return context The context containing the token amount and user sender address (if applicable).
     /// @return validationResult A uint256 value indicating the result of the validation (always 0 in this implementation).
-    function _validatePaymasterUserOp(PackedUserOperation calldata userOp, bytes32, uint256 /*requiredPreFund*/)
+    function _validatePaymasterUserOp(PackedUserOperation calldata userOp, bytes32, uint256 requiredPreFund)
     internal
     view
     override
-    returns (bytes memory context, uint256 validationResult) {unchecked {
-            uint256 dataLength = userOp.paymasterAndData.length - PAYMASTER_DATA_OFFSET;
-            require(dataLength == 0 || dataLength == 32,
-                "TPM: invalid data length"
-            );
-
-            address receiverAddress = address(0);
-            if(dataLength == 32) {
-                (address receiver, bool success) = checkReceiver(userOp.paymasterAndData);
-                require(success, "PAE: not address");
-                SimpleAccount account = SimpleAccount(payable(receiver));
-                require(account.isThisASimpleAccountContract() == true, "PAE: not account");
-                require(account.letCollectOnDeliver() == true, "PAE: cant pay");
-
-                bytes32 to = bytes32(userOp.callData[4:36]);
-                address toAddress = address(uint160(uint256(to)));
-
-                require(toAddress == receiver, "PAE: invalid pay");
-                receiverAddress = receiver;
+    returns (bytes memory context, uint256 validationResult) {
+            uint256 createDebt = 0;
+            (bool success, bytes memory result) = userOp.sender.staticcall(abi.encodeWithSignature("createDebt()"));
+            if(success && result.length > 0) {
+                createDebt = abi.decode(result, (uint256));
             }
 
-            context = abi.encode(userOp.sender, receiverAddress);
+            uint256 preChargeNative = createDebt + requiredPreFund + (tokenPaymasterConfig.refundPostopCost * userOp.unpackMaxFeePerGas());
+            uint256 cachedPriceWithMarkup = cachedPrice * PRICE_DENOMINATOR / tokenPaymasterConfig.priceMarkup;
+            uint256 tokenAmount = weiToToken(preChargeNative, cachedPriceWithMarkup) / tokenDecimalsPower;
+
+            address toCharge = getReceiverAddressOnPay(userOp.callData);
+            if(toCharge == address(0)){
+                toCharge = userOp.sender;
+            }
+
+            require(token.balanceOf(toCharge) >= tokenAmount, "Not enough gas");
+            require(token.allowance(toCharge, address(this)) >= tokenAmount, "Not enough gas allowance");
+
+            context = abi.encode(userOp.sender, toCharge);
             validationResult = _packValidationData(
                 false,
                 uint48(cachedPriceTimestamp + tokenPaymasterConfig.priceMaxAge),
                 0
             );
         }
-    }
 
-    // Check if receiver exists
-    function checkReceiver(bytes calldata paymasterAndData) private pure returns (address, bool) {
-        bytes32 receiverData = bytes32(paymasterAndData[PAYMASTER_DATA_OFFSET:PAYMASTER_DATA_OFFSET + 32]);
-
-        address receiver = address(uint160(uint256(receiverData)));
-        bool success = receiver != address(0);
-        return (receiver, success);
+    // If receiver will pay for transaction, get their address
+    function getReceiverAddressOnPay(bytes calldata callData) private view returns (address receiver) {
+        receiver = address(0);
+        if(callData.length > 168) {
+            address toContract = abi.decode(callData[4:36], (address));
+            //check calling contract address is own and function is transferReceiverPay
+            if(toContract == address(this) && bytes4(callData[132:136]) == this.transferReceiverPay.selector) {
+                receiver = abi.decode(callData[136:168], (address));
+            }
+        }
     }
 
     /// @notice Performs post-operation tasks, such as updating the token price and refunding excess tokens.
@@ -179,25 +180,23 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
     //      and maxPriorityFee (and basefee)
     //      It is not the same as tx.gasprice, which is what the bundler pays.
     function _postOp(PostOpMode, bytes calldata context, uint256 actualGasCost, uint256 actualUserOpFeePerGas) internal override {
-        unchecked {
-            uint256 priceMarkup = tokenPaymasterConfig.priceMarkup;
             (
                 address userOpSender,
-                address receiver
+                address toCharge
             ) = abi.decode(context, (address, address));
 
-            uint256 _cachedPrice = updateCachedPrice(false);          
-            // note: as price is in native-asset-per-token and we want more tokens increasing it means dividing it by markup
-            uint256 cachedPriceWithMarkup = _cachedPrice * PRICE_DENOMINATOR / priceMarkup;
-
-            // Refund tokens based on actual gas cost
-            uint256 actualChargeNative = actualGasCost + tokenPaymasterConfig.refundPostopCost * actualUserOpFeePerGas;
-            uint256 actualTokenNeeded = weiToToken(actualChargeNative, cachedPriceWithMarkup) / tokenDecimalsPower;
-
-            address toCharge = receiver;
-            if(toCharge == address(0)) {
-                toCharge = userOpSender;
+            uint256 createDebt = 0;
+            (bool success, bytes memory result) = userOpSender.staticcall(abi.encodeWithSignature("createDebt()"));
+            if(success && result.length > 0) {
+                createDebt = abi.decode(result, (uint256));
             }
+
+            //claim actual gas token needed
+            uint256 _cachedPrice = updateCachedPrice(false);          
+            uint256 cachedPriceWithMarkup = _cachedPrice * PRICE_DENOMINATOR / tokenPaymasterConfig.priceMarkup;
+
+            uint256 actualChargeNative = createDebt + actualGasCost + tokenPaymasterConfig.refundPostopCost * actualUserOpFeePerGas;
+            uint256 actualTokenNeeded = weiToToken(actualChargeNative, cachedPriceWithMarkup) / tokenDecimalsPower;
 
             SafeERC20.safeTransferFrom(
                 token,
@@ -206,9 +205,12 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
                 actualTokenNeeded
             );
 
+            if(createDebt > 0) {
+                userOpSender.call(abi.encodeWithSignature("setCreateDebt(uint256)", 0));
+            }
+
             emit UserOperationSponsored(userOpSender, actualTokenNeeded, actualGasCost, cachedPriceWithMarkup);
             refillEntryPointDeposit(_cachedPrice);
-        }
     }
 
     /// @notice If necessary this function uses this Paymaster's token balance to refill the deposit on EntryPoint
@@ -221,6 +223,26 @@ contract TokenPaymaster is BasePaymaster, UniswapHelper, OracleHelper {
             uint256 swappedWeth = _maybeSwapTokenToWeth(token, _cachedPrice);
             unwrapWeth(swappedWeth);
             entryPoint.depositTo{value: address(this).balance}(address(this));
+        }
+    }
+
+    function transferReceiverPay(
+        address recipient,
+        uint16 targetChain,
+        address targetReceiver,
+        uint256 amount,
+        address transferToken
+    ) external {
+        SimpleAccount account = SimpleAccount(payable(recipient));
+        require(account.isThisASimpleAccountContract() == true, "PAE: not account");
+        require(account.letCollectOnDeliver() == true, "PAE: cant pay");
+
+        if(targetChain != 0) {
+            uint256 cost = quoteCrossChainDeposit(targetChain);
+            SafeERC20.safeTransferFrom(token, recipient, address(this), cost);
+            this.sendCrossChainDeposit(targetChain, targetReceiver, msg.sender, recipient, amount, transferToken);
+        } else {
+            SafeERC20.safeTransferFrom(IERC20(transferToken), msg.sender, recipient, amount);
         }
     }
 

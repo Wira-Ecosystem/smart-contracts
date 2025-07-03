@@ -14,7 +14,11 @@ contract SimpleAccountTest is Test {
     SimpleAccountFactory factory;
 
     function setUp() public {
-        factory = new SimpleAccountFactory(entrypoint);
+        address fcOwner = address(0x173);
+        factory = new SimpleAccountFactory(entrypoint, fcOwner);
+        //initialize with entrypoint and fake tokenPaymaster
+        vm.prank(fcOwner);
+        factory.initialize(address(0x789));
     }
 
     function test_GetDeposit() public {

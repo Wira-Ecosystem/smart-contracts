@@ -13,47 +13,32 @@ import "./Guardians.sol";
  * This way, the entryPoint.getSenderAddress() can be called either before or after the account is created.
  */
 contract SimpleAccountFactory {
-    SimpleAccount public immutable accountImplementation;
+    IEntryPoint public immutable entryPoint;
+    address public fcOwner;
+    SimpleAccount public accountImplementation;
     mapping(address => address) public guardianOf;
-
-    mapping(uint256 => address) public routers;
-    mapping(uint256 => address) public links;
+    uint256 public gasToDebt = 0;
 
     event AccountCreated(
         uint256 chainid,
-        address router,
-        address link,
         address account
     );
 
     event GuardianCreated(address indexed account, address indexed guardian);
 
-    constructor(IEntryPoint _entryPoint) {
-        //Chainlink testnet routers
-        //Polygon Amoy
-        routers[80002] = 0x9C32fCB86BF0f4a1A8921a9Fe46de3198bb884B2;
-        //Op sepolia
-        routers[11155420] = 0x114A20A10b43D4115e5aeef7345a1A71d2a60C57;
-        //Base Sepolia
-        routers[84532] = 0xD3b06cEbF099CE7DA4AcCf578aaebFDBd6e88a93;
-        //Sepolia
-        routers[11155111] = 0x0BF3dE8c5D3e8A2B34D2BEeB17ABfCeBaf363A59;
+    modifier onlyOwner {
+        require(msg.sender == fcOwner, "Only owner");
+        _;
+    }
 
-        //Chainlink testnet links
-        //Polygon Amoy
-        links[80002] = 0x0Fd9e8d3aF1aaee056EB9e802c3A762a667b1904;
-        //Op sepolia
-        links[11155420] = 0xE4aB69C077896252FAFBD49EFD26B5D171A32410;
-        //Base Sepolia
-        links[84532] = 0xE4aB69C077896252FAFBD49EFD26B5D171A32410;
-        //Sepolia
-        links[11155111] = 0x779877A7B0D9E8603169DdbD7836e478b4624789;
+    constructor(IEntryPoint _entryPoint, address _owner) {
+        fcOwner = _owner;
+        entryPoint = _entryPoint;
+    }
 
-        address currentRouter = routers[block.chainid];
-        address currentLink = links[block.chainid];
-        accountImplementation = new SimpleAccount(_entryPoint, currentRouter, currentLink);
-
-        emit AccountCreated(block.chainid, currentRouter, currentLink, address(accountImplementation));
+    function initialize(address _tokenPaymaster) external onlyOwner {
+        accountImplementation = new SimpleAccount(entryPoint, _tokenPaymaster);
+        emit AccountCreated(block.chainid, address(accountImplementation));
     }
 
     /**
@@ -70,20 +55,33 @@ contract SimpleAccountFactory {
         }
         ret = SimpleAccount(payable(new ERC1967Proxy{salt : bytes32(salt)}(
                 address(accountImplementation),
-                abi.encodeCall(SimpleAccount.initialize, (owner))
+                abi.encodeCall(SimpleAccount.initialize, (owner, address(this)))
             )));
-
         
+        ret.setCreateDebt(gasToDebt);
+    }
 
-        // 2) Despliega el contrato Guardian para esta cuenta
-        Guardian guardianContract = new Guardian(address(ret));
+    function createGuardianForAccount(
+        address account,
+        uint256 salt
+    ) external returns (address) {
+        require(account != address(0), "Invalid account");
+        require(guardianOf[account] == address(0), "Guardian already exists");
 
-        // 3) Llamada setGuardian en la cuenta recién creada
-        ret.setGuardian(address(guardianContract));
+        require(
+            SimpleAccount(payable(account)).isThisASimpleAccountContract(),
+            "Not a SimpleAccount"
+        );
 
-        // 4) Guarda en el mapping y emite evento
-        guardianOf[address(ret)] = address(guardianContract);
-        emit GuardianCreated(address(ret), address(guardianContract));    
+        bytes32 guardianSalt = keccak256(abi.encodePacked(account, salt));
+        Guardian guardianContract = new Guardian{salt: guardianSalt}(account);
+
+        SimpleAccount(payable(account)).setGuardian(address(guardianContract));
+
+        guardianOf[account] = address(guardianContract);
+        emit GuardianCreated(account, address(guardianContract));
+
+        return address(guardianContract);
     }
 
     /**
@@ -94,8 +92,56 @@ contract SimpleAccountFactory {
                 type(ERC1967Proxy).creationCode,
                 abi.encode(
                     address(accountImplementation),
-                    abi.encodeCall(SimpleAccount.initialize, (owner))
+                    abi.encodeCall(SimpleAccount.initialize, (owner, address(this)))
                 )
-            )));
+            )
+        ));
+    }
+
+    function getGuardianAddress(
+        address account,
+        uint256 salt
+    ) public view returns (address) {
+        bytes32 guardianSalt = keccak256(abi.encodePacked(account, salt));
+        return
+            Create2.computeAddress(
+                guardianSalt,
+                keccak256(
+                    abi.encodePacked(
+                        type(Guardian).creationCode,
+                        abi.encode(account)
+                    )
+                )
+            );
+    }
+
+    function setGasToDebt(uint256 _gasToDebt) external onlyOwner {
+        gasToDebt = _gasToDebt;
+    }
+
+    /**
+     * Add stake for this factory.
+     * This method can also carry eth value to add to the current stake.
+     * @param unstakeDelaySec - The unstake delay for this factory. Can only be increased.
+     */
+    function addStake(uint32 unstakeDelaySec) external payable onlyOwner {
+        entryPoint.addStake{value: msg.value}(unstakeDelaySec);
+    }
+
+    /**
+     * Unlock the stake, in order to withdraw it.
+     * The factory can't serve requests once unlocked, until it calls addStake again
+     */
+    function unlockStake() external onlyOwner {
+        entryPoint.unlockStake();
+    }
+
+    /**
+     * Withdraw the entire factory's stake.
+     * stake must be unlocked first (and then wait for the unstakeDelay to be over)
+     * @param withdrawAddress - The address to send withdrawn value.
+     */
+    function withdrawStake(address payable withdrawAddress) external onlyOwner {
+        entryPoint.withdrawStake(withdrawAddress);
     }
 }
