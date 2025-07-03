@@ -22,9 +22,11 @@ contract GuardianTest is Test {
     bytes32 guardian3Hash;
 
     function setUp() public {
-        factory = new SimpleAccountFactory();
+        address fcOwner = address(0x173);
+        factory = new SimpleAccountFactory(entrypoint, fcOwner);
         //initialize with entrypoint and fake tokenPaymaster
-        factory.initialize(entrypoint, address(0x123));
+        vm.prank(fcOwner);
+        factory.initialize(address(0x123));
         owner = vm.addr(0x123);
 
         account = factory.createAccount(owner, 123456);

@@ -15,7 +15,8 @@ contract TokenPaymasterTest is Test {
     using stdStorage for StdStorage;
 
     IEntryPoint public immutable entrypoint = IEntryPoint(0x0000000071727De22E5E9d8BAf0edAc6f37da032);
-    SimpleAccountFactory factory = new SimpleAccountFactory();
+    address fcOwner = address(0x173);
+    SimpleAccountFactory factory = new SimpleAccountFactory(entrypoint, fcOwner);
 
     PackedUserOperation public testUserOp = PackedUserOperation({
         sender: address(0x169),
@@ -118,7 +119,7 @@ contract TokenPaymasterTest is Test {
     function test_setTokenPaymasterConfig_success() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         TokenPaymaster.TokenPaymasterConfig memory newTpc = TokenPaymaster.TokenPaymasterConfig({
             priceMarkup: 1.5e26,           // 150% markup (50% profit)
@@ -139,7 +140,7 @@ contract TokenPaymasterTest is Test {
     function test_setTokenPaymasterConfig_failOn_noOwnerCall() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         TokenPaymaster.TokenPaymasterConfig memory newTpc = TokenPaymaster.TokenPaymasterConfig({
             priceMarkup: 1.5e26,           // 150% markup (50% profit)
@@ -159,7 +160,7 @@ contract TokenPaymasterTest is Test {
     function test_setTokenPaymasterConfig_failOn_priceMarkup_higherThan_200percent() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         TokenPaymaster.TokenPaymasterConfig memory newTpc = tokenPaymasterConfig;
         newTpc.priceMarkup = 2.1e26;  // 210% markup (110% profit)
@@ -172,7 +173,7 @@ contract TokenPaymasterTest is Test {
     function test_setTokenPaymasterConfig_failOn_priceMarkup_lowerThan_100percent() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         TokenPaymaster.TokenPaymasterConfig memory newTpc = tokenPaymasterConfig;
         newTpc.priceMarkup = 0.9e26;  // 90% markup (10% loss)
@@ -185,7 +186,7 @@ contract TokenPaymasterTest is Test {
     function test_setTokenDecimals_failOn_noOwnerCall() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         address unauthorized = address(0x456);
         vm.expectRevert(
@@ -198,7 +199,7 @@ contract TokenPaymasterTest is Test {
     function test_setTokenDecimals_success() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         vm.prank(owner);
         p.setTokenDecimals(2);
@@ -209,7 +210,7 @@ contract TokenPaymasterTest is Test {
     function test_setUniswapConfiguration_failOn_noOwnerCall() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         UniswapHelper.UniswapHelperConfig memory newConfig = UniswapHelper.UniswapHelperConfig({
             minSwapAmount: 0.1 ether,     // Minimum amount to swap
@@ -228,7 +229,7 @@ contract TokenPaymasterTest is Test {
     function test_setUniswapConfiguration_success() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         UniswapHelper.UniswapHelperConfig memory newConfig = UniswapHelper.UniswapHelperConfig({
             minSwapAmount: 0.1 ether,     // Minimum amount to swap
@@ -243,7 +244,7 @@ contract TokenPaymasterTest is Test {
     function test_withdrawToken_failOn_noOwnerCall() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         //fund paymaster with 10 gas tokens
         stdstore.target(address(gasToken))
@@ -262,7 +263,7 @@ contract TokenPaymasterTest is Test {
     function test_withdrawToken_failOn_notEnoughAmount() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         //fund paymaster with 10 gas tokens
         stdstore.target(address(gasToken))
@@ -283,7 +284,7 @@ contract TokenPaymasterTest is Test {
     function test_withdrawToken_success_toOwner() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         //fund paymaster with 10 gas tokens
         stdstore.target(address(gasToken))
@@ -301,7 +302,7 @@ contract TokenPaymasterTest is Test {
     function test_withdrawToken_success_toAnother() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         //fund paymaster with 10 gas tokens
         stdstore.target(address(gasToken))
@@ -320,7 +321,7 @@ contract TokenPaymasterTest is Test {
     function test_validatePaymasterUserOp_failOn_senderIsNotEntrypoint() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         vm.expectRevert(bytes("Sender not EntryPoint"));
         p.validatePaymasterUserOp(testUserOp, "", 0);
@@ -329,7 +330,7 @@ contract TokenPaymasterTest is Test {
     function test_validatePaymasterUserOp_failOn_senderWithoutGas() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         p.updateCachedPrice(false);
         vm.expectRevert(bytes("Not enough gas"));
@@ -340,7 +341,7 @@ contract TokenPaymasterTest is Test {
     function test_validatePaymasterUserOp_failOn_senderWithoutApprovedGas() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         //fund sender with 10 gas tokens
         stdstore.target(address(gasToken))
@@ -358,7 +359,7 @@ contract TokenPaymasterTest is Test {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
         p.updateCachedPrice(false);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize( address(p));
 
         PackedUserOperation memory modifiedUserOp = testUserOp;
         address receiver = address(0x456);
@@ -400,7 +401,7 @@ contract TokenPaymasterTest is Test {
     function test_postOp_failOn_noEntrypointCall() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         vm.expectRevert(bytes("Sender not EntryPoint"));
         p.postOp(IPaymaster.PostOpMode.opSucceeded, abi.encode(address(0x456), address(0x789)), 1_000, 1_000);
@@ -409,7 +410,7 @@ contract TokenPaymasterTest is Test {
     function test_postOp_failOn_chargeNotApprovedTokens() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         uint actualGasCost = 0.0001 ether;
         uint actualUserOpFeePerGas = 1_000;
@@ -431,7 +432,7 @@ contract TokenPaymasterTest is Test {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
         p.updateCachedPrice(false);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         uint actualGasCost = 0.0001 ether;
         uint actualUserOpFeePerGas = 1_000;
@@ -457,7 +458,7 @@ contract TokenPaymasterTest is Test {
         address accountOwner = address(0x456);
 
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         uint actualGasCost = 0.0001 ether;
         uint actualUserOpFeePerGas = 1_000;
@@ -486,7 +487,7 @@ contract TokenPaymasterTest is Test {
     function test_transferReceiverPay_failOn_ReceiverNotAccount() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         vm.expectRevert();
         p.transferReceiverPay(
@@ -501,7 +502,7 @@ contract TokenPaymasterTest is Test {
     function test_transferReceiverPay_failOn_ReceiverRejectPay() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         vm.startPrank(address(0x456));
         SimpleAccount acc = factory.createAccount(address(0x456), 123456);
@@ -522,7 +523,7 @@ contract TokenPaymasterTest is Test {
     function test_transferReceiverPay_failOn_SenderWithoutBalance() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         vm.startPrank(address(0x456));
         SimpleAccount acc = factory.createAccount(address(0x456), 123456);
@@ -543,7 +544,7 @@ contract TokenPaymasterTest is Test {
     function test_transferReceiverPay_failOn_SenderWithoutApprovedBalance() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
 
         vm.startPrank(address(0x456));
         SimpleAccount acc = factory.createAccount(address(0x456), 123456);
@@ -572,7 +573,7 @@ contract TokenPaymasterTest is Test {
     function test_transferReceiverPay_success() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
         p.updateCachedPrice(false);
         //fund payaster with native tokens for fee
         vm.deal(address(p), 0.5 ether);
@@ -620,7 +621,7 @@ contract TokenPaymasterTest is Test {
     function test_quoteCrossChainDeposit_return_inGasToken() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
         p.updateCachedPrice(false);
         //check for arbitrum sepolia
         uint cost = p.quoteCrossChainDeposit(10003);
@@ -634,7 +635,7 @@ contract TokenPaymasterTest is Test {
     function test_sendCrossChainDeposit_failOn_senderIsAny() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
         p.updateCachedPrice(false);
 
         address sender = address(0x246);
@@ -654,7 +655,7 @@ contract TokenPaymasterTest is Test {
     function test_sendCrossChainDeposit_failOn_senderWithoutGas() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
         p.updateCachedPrice(false);
 
         address sender = address(0x246);
@@ -674,7 +675,7 @@ contract TokenPaymasterTest is Test {
     function test_sendCrossChainDeposit_failOn_senderWithoutApprovedGas() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
         p.updateCachedPrice(false);
 
         address sender = address(0x246);
@@ -698,7 +699,7 @@ contract TokenPaymasterTest is Test {
     function test_sendCrossChainDeposit_failOn_senderWithoutTokenToSend() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
         p.updateCachedPrice(false);
 
         address sender = address(0x246);
@@ -726,7 +727,7 @@ contract TokenPaymasterTest is Test {
     function test_sendCrossChainDeposit_failOn_senderWithoutApprovedTokenToSend() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
         p.updateCachedPrice(false);
 
         address sender = address(0x246);
@@ -757,7 +758,7 @@ contract TokenPaymasterTest is Test {
     function test_sendCrossChainDeposit_success() public {
         address owner = address(0x123);
         TokenPaymaster p = newTokenPaymaster(owner);
-        factory.initialize(entrypoint, address(p));
+        factory.initialize(address(p));
         p.updateCachedPrice(false);
 
         //fund paymaster with native tokens
