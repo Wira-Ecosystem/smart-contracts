@@ -30,7 +30,11 @@ contract GuardianTest is Test {
         owner = vm.addr(0x123);
 
         account = factory.createAccount(owner, 123456);
+
+        // Create guardian for the account
+        factory.createGuardianForAccount(address(account), 1);
         guardian = Guardian(account.getGuardian());
+
         guardian1Addr = vm.addr(uint256(1));
         guardian2Addr = vm.addr(uint256(2));
         guardian3Addr = vm.addr(uint256(3));
@@ -141,7 +145,9 @@ contract GuardianTest is Test {
 
     function test_ApproveRecoveryGuardianNotAccepted() public {
         address newOwner = vm.addr(0x999);
-        vm.expectRevert(abi.encodeWithSelector(Guardian.InvalidGuardian.selector));
+        vm.expectRevert(
+            abi.encodeWithSelector(Guardian.InvalidGuardian.selector)
+        );
         vm.prank(guardian1Addr);
         guardian.approveRecovery(newOwner);
     }
@@ -261,7 +267,7 @@ contract GuardianTest is Test {
 
         emit Guardian.RecoveryExecuted(newOwner);
 
-            vm.prank(guardian1Addr);
+        vm.prank(guardian1Addr);
 
         guardian.approveRecovery(newOwner);
     }
