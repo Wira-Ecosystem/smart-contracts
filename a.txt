@@ -1,0 +1,10 @@
+01. createAccount_Idempotent: Llamar dos veces con el mismo (owner, salt) devuelve la misma dirección y no vuelve a desplegar bytecode. Previene "cuentas huérfanas".
+02. createAccount_DeterministicAddress: La dirección devuelta coincide con la calculada por getAddress. Garantiza compatibilidad con counterfactual wallets.
+03. createAccount_EmiteEvento: El evento AccountCreated se emite exactamente 1 vez y con chainid correcto. Útil para indexers.
+04. createAccount_PropagaGasToDebt: Tras setGasToDebt (X), una cuenta nueva recibe createDebt == X. Asegura coherencia con el Paymaster.
+05. createGuardianForAccount_FlowFeliz: Despliega guardián, lo vincula en SimpleAccount y actualiza guardian of [account]. Revisa que el evento Guardian Created registre ambos parámetros.
+06. createGuardianForAccount_Idempotent: Segunda llamada con la misma cuenta /salt revierte con "Guardian already exists". Evita gastar gas innecesario.
+07. getGuardianAddress_Coherente: La dirección predicha por getGuardianAddress coincide con la que despliega createGuardian ForAccount.
+08. setGasToDebt_SoloOwner: Cualquier cuenta ≠ fcOwner debe revertir. Verifica control de acceso.
+09. StakeCycle_Completo: addStake → unlockStake → simular paso de tiempo → withdrawStake. Confirma que la factory puede gestionar su stake en EntryPoint.
+10. initialize_Reentrancia: Llamar initialize dos veces debe revertir. Protege contra reinicialización accidental.

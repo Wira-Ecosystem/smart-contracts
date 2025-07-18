@@ -1,44 +1,74 @@
 // SPDX-License-Identifier: GPL-3.0
+// Define la licencia del contrato como GPL-3.0
+
 pragma solidity ^0.8.24;
+// Especifica la versión del compilador de Solidity requerido
 
 import "@openzeppelin/contracts/utils/Create2.sol";
+// Importa utilidades para crear contratos usando Create2
+
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+// Importa la implementación de proxy ERC1967
 
 import "./SimpleAccount.sol";
+// Importa el contrato SimpleAccount
+
 import "./Guardians.sol";
+// Importa el contrato Guardians
+
 /**
  * A sample factory contract for SimpleAccount
- * A UserOperations "initCode" holds the address of the factory, and a method call (to createAccount, in this sample factory).
- * The factory's createAccount returns the target account address even if it is already installed.
- * This way, the entryPoint.getSenderAddress() can be called either before or after the account is created.
+ * Contrato de fábrica para crear instancias de SimpleAccount
+ * Permite crear cuentas y guardianes asociados
  */
 contract SimpleAccountFactory {
     IEntryPoint public immutable entryPoint;
+    // Dirección del EntryPoint, inmutable
+
     address public fcOwner;
+    // Dirección del propietario de la fábrica
+
     SimpleAccount public accountImplementation;
+    // Implementación base de SimpleAccount
+
     mapping(address => address) public guardianOf;
+    // Mapeo para asociar cuentas con sus guardianes
+
     uint256 public gasToDebt = 0;
+    // Variable para almacenar la deuda de gas
 
     event AccountCreated(
         uint256 chainid,
         address account
     );
+    // Evento emitido cuando se crea una cuenta
 
     event GuardianCreated(address indexed account, address indexed guardian);
+    // Evento emitido cuando se crea un guardián
 
     modifier onlyOwner {
         require(msg.sender == fcOwner, "Only owner");
+        // Modificador que asegura que solo el propietario puede ejecutar la función
         _;
     }
 
     constructor(IEntryPoint _entryPoint, address _owner) {
         fcOwner = _owner;
+        // Configura el propietario de la fábrica
+
         entryPoint = _entryPoint;
+        // Configura el EntryPoint
     }
 
     function initialize(address _tokenPaymaster) external onlyOwner {
+        require(address(accountImplementation) == address(0), "Already initialized");
+        // Previene doble inicialización
+
         accountImplementation = new SimpleAccount(entryPoint, _tokenPaymaster);
+        // Crea una nueva instancia de SimpleAccount como implementación base
+
         emit AccountCreated(block.chainid, address(accountImplementation));
+        // Emite un evento de creación de cuenta
     }
 
     /**
@@ -48,17 +78,26 @@ contract SimpleAccountFactory {
      * This method returns an existing account address so that entryPoint.getSenderAddress() would work even after account creation
      */
     function createAccount(address owner,uint256 salt) public returns (SimpleAccount ret) {
+        require(owner != address(0), "Owner cannot be zero address");
+        // Asegura que el propietario no sea la dirección cero
+
         address addr = getAddress(owner, salt);
+        // Calcula la dirección de la cuenta usando Create2
+
         uint256 codeSize = addr.code.length;
         if (codeSize > 0) {
             return SimpleAccount(payable(addr));
+            // Devuelve la cuenta si ya está desplegada
         }
+
         ret = SimpleAccount(payable(new ERC1967Proxy{salt : bytes32(salt)}(
                 address(accountImplementation),
                 abi.encodeCall(SimpleAccount.initialize, (owner, address(this)))
             )));
-        
+        // Crea una nueva cuenta usando un proxy ERC1967
+
         ret.setCreateDebt(gasToDebt);
+        // Configura la deuda de gas en la cuenta creada
     }
 
     function createGuardianForAccount(
@@ -66,22 +105,32 @@ contract SimpleAccountFactory {
         uint256 salt
     ) external returns (address) {
         require(account != address(0), "Invalid account");
+        // Asegura que la cuenta no sea la dirección cero
+
         require(guardianOf[account] == address(0), "Guardian already exists");
+        // Asegura que la cuenta no tenga un guardián existente
 
         require(
             SimpleAccount(payable(account)).isThisASimpleAccountContract(),
             "Not a SimpleAccount"
         );
+        // Asegura que la cuenta sea una instancia válida de SimpleAccount
 
         bytes32 guardianSalt = keccak256(abi.encodePacked(account, salt));
         Guardian guardianContract = new Guardian{salt: guardianSalt}(account);
+        // Crea un nuevo contrato de guardián usando Create2
 
         SimpleAccount(payable(account)).setGuardian(address(guardianContract));
+        // Configura el guardián en la cuenta
 
         guardianOf[account] = address(guardianContract);
+        // Actualiza el mapeo de guardianes
+
         emit GuardianCreated(account, address(guardianContract));
+        // Emite un evento de creación de guardián
 
         return address(guardianContract);
+        // Devuelve la dirección del guardián creado
     }
 
     /**
@@ -96,6 +145,7 @@ contract SimpleAccountFactory {
                 )
             )
         ));
+        // Calcula la dirección contrafactual de una cuenta
     }
 
     function getGuardianAddress(
@@ -113,10 +163,12 @@ contract SimpleAccountFactory {
                     )
                 )
             );
+        // Calcula la dirección contrafactual de un guardián
     }
 
     function setGasToDebt(uint256 _gasToDebt) external onlyOwner {
         gasToDebt = _gasToDebt;
+        // Configura la deuda de gas
     }
 
     /**
@@ -126,6 +178,7 @@ contract SimpleAccountFactory {
      */
     function addStake(uint32 unstakeDelaySec) external payable onlyOwner {
         entryPoint.addStake{value: msg.value}(unstakeDelaySec);
+        // Añade participación para la fábrica
     }
 
     /**
@@ -134,6 +187,7 @@ contract SimpleAccountFactory {
      */
     function unlockStake() external onlyOwner {
         entryPoint.unlockStake();
+        // Desbloquea la participación
     }
 
     /**
@@ -143,5 +197,6 @@ contract SimpleAccountFactory {
      */
     function withdrawStake(address payable withdrawAddress) external onlyOwner {
         entryPoint.withdrawStake(withdrawAddress);
+        // Retira la participación desbloqueada
     }
 }

@@ -1,0 +1,244 @@
+
+╭-------------+------------------------------------------------------------------------+--------------------------------------------------------------------╮
+| Type        | Signature                                                              | Selector                                                           |
++===========================================================================================================================================================+
+| event       | AccountCreated(uint256,address)                                        | 0x487f75407abee1a719a204e683a93f0583efee10816d2651b112f8be571f7d32 |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| event       | GuardianCreated(address,address)                                       | 0xc10be7679c68dc039d37a11214faa50762821fc833ce75062ac7fcf7083f852f |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| function    | accountImplementation() view returns (SimpleAccount)                   | 0x11464fbe                                                         |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| function    | addStake(uint32) payable                                               | 0x0396cb60                                                         |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| function    | createAccount(address,uint256) nonpayable returns (SimpleAccount)      | 0x5fbfb9cf                                                         |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| function    | createGuardianForAccount(address,uint256) nonpayable returns (address) | 0x320dc168                                                         |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| function    | entryPoint() view returns (IEntryPoint)                                | 0xb0d691fe                                                         |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| function    | fcOwner() view returns (address)                                       | 0xf24209d8                                                         |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| function    | gasToDebt() view returns (uint256)                                     | 0xf3b0a368                                                         |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| function    | getAddress(address,uint256) view returns (address)                     | 0x8cb84e18                                                         |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| function    | getGuardianAddress(address,uint256) view returns (address)             | 0x6a235549                                                         |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| function    | guardianOf(address) view returns (address)                             | 0xacd52e8d                                                         |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| function    | initialize(address) nonpayable                                         | 0xc4d66de8                                                         |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| function    | setGasToDebt(uint256) nonpayable                                       | 0x98b8a488                                                         |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| function    | unlockStake() nonpayable                                               | 0xbb9fe6bf                                                         |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| function    | withdrawStake(address payable) nonpayable                              | 0xc23a5cea                                                         |
+|-------------+------------------------------------------------------------------------+--------------------------------------------------------------------|
+| constructor | constructor(IEntryPoint,address) nonpayable                            |                                                                    |
+╰-------------+------------------------------------------------------------------------+--------------------------------------------------------------------╯
+
+saulc@SAULPC:/mnt/i/Proyectos/contracts$ forge test --match-test test_SignatureValidation_Success --fork-url http://127.0.0.1:8545 -vvvv
+[⠔] Compiling...
+No files changed, compilation skipped
+
+Ran 1 test for test/unit/SimpleAccount.t.sol:SimpleAccountTest
+[FAIL: EvmError: Revert] test_SignatureValidation_Success() (gas: 185700)
+Traces:
+  [4231302] SimpleAccountTest::setUp()
+    ├─ [2734631] → new SimpleAccountFactory@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    │   └─ ← [Return] 13535 bytes of code
+    ├─ [0] VM::prank(0x0000000000000000000000000000000000000173)
+    │   └─ ← [Return]
+    ├─ [1432788] SimpleAccountFactory::initialize(0x0000000000000000000000000000000000000789)
+    │   ├─ [1374658] → new SimpleAccount@0x104fBc016F4bb334D775a19E8A6510109AC63E00
+    │   │   ├─ emit Initialized(version: 18446744073709551615 [1.844e19])
+    │   │   └─ ← [Return] 6747 bytes of code
+    │   ├─ emit AccountCreated(chainid: 31337 [3.133e4], account: SimpleAccount: [0x104fBc016F4bb334D775a19E8A6510109AC63E00])
+    │   └─ ← [Return]
+    └─ ← [Return]
+
+  [185700] SimpleAccountTest::test_SignatureValidation_Success()
+    ├─ [0] VM::addr(<pk>) [staticcall]
+    │   └─ ← [Return] 0x476C88ED464EFD251a8b18Eb84785F7C46807873
+    ├─ [170526] SimpleAccountFactory::createAccount(0x476C88ED464EFD251a8b18Eb84785F7C46807873, 123456 [1.234e5])
+    │   ├─ [125018] → new ERC1967Proxy@0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61
+    │   │   ├─ emit Upgraded(implementation: SimpleAccount: [0x104fBc016F4bb334D775a19E8A6510109AC63E00])
+    │   │   ├─ [72012] SimpleAccount::initialize(0x476C88ED464EFD251a8b18Eb84785F7C46807873, SimpleAccountFactory: [0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f]) [delegatecall]
+    │   │   │   ├─ emit SimpleAccountInitialized(entryPoint: 0x0000000071727De22E5E9d8BAf0edAc6f37da032, owner: 0x476C88ED464EFD251a8b18Eb84785F7C46807873)
+    │   │   │   ├─ emit SimpleAccountInitialized(entryPoint: 0x0000000071727De22E5E9d8BAf0edAc6f37da032, owner: 0x476C88ED464EFD251a8b18Eb84785F7C46807873)
+    │   │   │   ├─ emit Initialized(version: 1)
+    │   │   │   └─ ← [Stop]
+    │   │   └─ ← [Return] 130 bytes of code
+    │   ├─ [3292] ERC1967Proxy::fallback(0)
+    │   │   ├─ [2985] SimpleAccount::setCreateDebt(0) [delegatecall]
+    │   │   │   └─ ← [Stop]
+    │   │   └─ ← [Return]
+    │   └─ ← [Return] ERC1967Proxy: [0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61]
+    ├─ [0] 0x0000000071727De22E5E9d8BAf0edAc6f37da032::getUserOpHash(PackedUserOperation({ sender: 0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61, nonce: 0, initCode: 0x, callData: 0xb61d27f6000000000000000000000000e9c1301621a833c9f4f9ddc1ceaeecd331e5bb61000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000, accountGasLimits: 0x0000000000000000000000000000000000000000000000000000000000000000, preVerificationGas: 0, gasFees: 0x0000000000000000000000000000000000000000000000000000000000000000, paymasterAndData: 0x, signature: 0x })) [staticcall]
+    │   └─ ← [Stop]
+    └─ ← [Revert] EvmError: Revert
+
+Suite result: FAILED. 0 passed; 1 failed; 0 skipped; finished in 31.53ms (3.78ms CPU time)
+
+Ran 1 test suite in 98.57ms (31.53ms CPU time): 0 tests passed, 1 failed, 0 skipped (1 total tests)
+
+
+
+saulc@SAULPC:/mnt/i/Proyectos/contracts$ forge test --match-path test/unit/SimpleAccount.t.sol --fork-url https://sepolia.optimism.io/api? -vvvv
+[⠆] Compiling...
+[⠔] Compiling 1 files with Solc 0.8.30
+[⠒] Solc 0.8.30 finished in 3.27s
+Compiler run successful!
+
+Ran 3 tests for test/unit/SimpleAccount.t.sol:SimpleAccountTest
+[FAIL: Signature validation should fail with tampered data: 0 != 1] test_SignatureValidation_Failure_TamperedData() (gas: 196502)
+Traces:
+  [4231302] SimpleAccountTest::setUp()
+    ├─ [2734631] → new SimpleAccountFactory@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    │   └─ ← [Return] 13535 bytes of code
+    ├─ [0] VM::prank(0x0000000000000000000000000000000000000173)
+    │   └─ ← [Return]
+    ├─ [1432788] SimpleAccountFactory::initialize(0x0000000000000000000000000000000000000789)
+    │   ├─ [1374658] → new SimpleAccount@0x104fBc016F4bb334D775a19E8A6510109AC63E00
+    │   │   ├─ emit Initialized(version: 18446744073709551615 [1.844e19])
+    │   │   └─ ← [Return] 6747 bytes of code
+    │   ├─ emit AccountCreated(chainid: 11155420 [1.115e7], account: SimpleAccount: [0x104fBc016F4bb334D775a19E8A6510109AC63E00])
+    │   └─ ← [Return]
+    └─ ← [Return]
+
+  [196502] SimpleAccountTest::test_SignatureValidation_Failure_TamperedData()
+    ├─ [0] VM::addr(<pk>) [staticcall]
+    │   └─ ← [Return] 0x476C88ED464EFD251a8b18Eb84785F7C46807873
+    ├─ [170526] SimpleAccountFactory::createAccount(0x476C88ED464EFD251a8b18Eb84785F7C46807873, 123456 [1.234e5])
+    │   ├─ [125018] → new ERC1967Proxy@0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61
+    │   │   ├─ emit Upgraded(implementation: SimpleAccount: [0x104fBc016F4bb334D775a19E8A6510109AC63E00])
+    │   │   ├─ [72012] SimpleAccount::initialize(0x476C88ED464EFD251a8b18Eb84785F7C46807873, SimpleAccountFactory: [0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f]) [delegatecall]
+    │   │   │   ├─ emit SimpleAccountInitialized(entryPoint: 0x0000000071727De22E5E9d8BAf0edAc6f37da032, owner: 0x476C88ED464EFD251a8b18Eb84785F7C46807873)
+    │   │   │   ├─ emit SimpleAccountInitialized(entryPoint: 0x0000000071727De22E5E9d8BAf0edAc6f37da032, owner: 0x476C88ED464EFD251a8b18Eb84785F7C46807873)
+    │   │   │   ├─ emit Initialized(version: 1)
+    │   │   │   └─ ← [Stop]
+    │   │   └─ ← [Return] 130 bytes of code
+    │   ├─ [3292] ERC1967Proxy::fallback(0)
+    │   │   ├─ [2985] SimpleAccount::setCreateDebt(0) [delegatecall]
+    │   │   │   └─ ← [Stop]
+    │   │   └─ ← [Return]
+    │   └─ ← [Return] ERC1967Proxy: [0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61]
+    ├─ [1561] 0x0000000071727De22E5E9d8BAf0edAc6f37da032::getUserOpHash(PackedUserOperation({ sender: 0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61, nonce: 0, initCode: 0x, callData: 0xb61d27f6000000000000000000000000e9c1301621a833c9f4f9ddc1ceaeecd331e5bb61000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000, accountGasLimits: 0x0000000000000000000000000000000000000000000000000000000000000000, preVerificationGas: 0, gasFees: 0x0000000000000000000000000000000000000000000000000000000000000000, paymasterAndData: 0x, signature: 0x })) [staticcall]
+    │   └─ ← [Return] 0xce83d0df947bbfc0dfb672cffa31631b70b0c7fe3ff9a679f50cd088c3875d5c
+    ├─ [0] VM::sign("<pk>", 0x19f4d8526c6a9a0ee6d0369b7bbff26c8eae14f623a7b3d243e9cb9c10738c4b) [staticcall]
+    │   └─ ← [Return] 27, 0x416e0c3e086905422d4b316034abdde9fc05d49eeecac0ad803cafe386cda323, 0x15665d9e8411c40d2f60b6bff0f08599aa46cc6e10fb9ebac3ca69fe5c18122c
+    ├─ [0] VM::startPrank(0x0000000071727De22E5E9d8BAf0edAc6f37da032)
+    │   └─ ← [Return]
+    ├─ [5182] ERC1967Proxy::fallback(PackedUserOperation({ sender: 0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61, nonce: 0, initCode: 0x, callData: 0xb61d27f6000000000000000000000000e9c1301621a833c9f4f9ddc1ceaeecd331e5bb610000000000000000000000000000000000000000000000000de0b6b3a764000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000, accountGasLimits: 0x0000000000000000000000000000000000000000000000000000000000000000, preVerificationGas: 0, gasFees: 0x0000000000000000000000000000000000000000000000000000000000000000, paymasterAndData: 0x, signature: 0x416e0c3e086905422d4b316034abdde9fc05d49eeecac0ad803cafe386cda32315665d9e8411c40d2f60b6bff0f08599aa46cc6e10fb9ebac3ca69fe5c18122c1b }), 0xce83d0df947bbfc0dfb672cffa31631b70b0c7fe3ff9a679f50cd088c3875d5c, 0)
+    │   ├─ [4736] SimpleAccount::validateUserOp(PackedUserOperation({ sender: 0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61, nonce: 0, initCode: 0x, callData: 0xb61d27f6000000000000000000000000e9c1301621a833c9f4f9ddc1ceaeecd331e5bb610000000000000000000000000000000000000000000000000de0b6b3a764000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000, accountGasLimits: 0x0000000000000000000000000000000000000000000000000000000000000000, preVerificationGas: 0, gasFees: 0x0000000000000000000000000000000000000000000000000000000000000000, paymasterAndData: 0x, signature: 0x416e0c3e086905422d4b316034abdde9fc05d49eeecac0ad803cafe386cda32315665d9e8411c40d2f60b6bff0f08599aa46cc6e10fb9ebac3ca69fe5c18122c1b }), 0xce83d0df947bbfc0dfb672cffa31631b70b0c7fe3ff9a679f50cd088c3875d5c, 0) [delegatecall]
+    │   │   ├─ [3000] PRECOMPILES::ecrecover(0x19f4d8526c6a9a0ee6d0369b7bbff26c8eae14f623a7b3d243e9cb9c10738c4b, 27, 29594772828396493648693023442484033118719161236412843315543758587874119623459, 9679434356846345226929483785461442178213193984547179690306940679901500936748) [staticcall]
+    │   │   │   └─ ← [Return] 0x000000000000000000000000476c88ed464efd251a8b18eb84785f7c46807873
+    │   │   └─ ← [Return] 0
+    │   └─ ← [Return] 0
+    ├─ [0] VM::stopPrank()
+    │   └─ ← [Return]
+    ├─ [0] VM::assertEq(0, 1, "Signature validation should fail with tampered data") [staticcall]
+    │   └─ ← [Revert] Signature validation should fail with tampered data: 0 != 1
+    └─ ← [Revert] Signature validation should fail with tampered data: 0 != 1
+
+[FAIL: Signature validation should fail with wrong signer: 0 != 1] test_SignatureValidation_Failure_WrongSigner() (gas: 196145)
+Traces:
+  [4231302] SimpleAccountTest::setUp()
+    ├─ [2734631] → new SimpleAccountFactory@0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f
+    │   └─ ← [Return] 13535 bytes of code
+    ├─ [0] VM::prank(0x0000000000000000000000000000000000000173)
+    │   └─ ← [Return]
+    ├─ [1432788] SimpleAccountFactory::initialize(0x0000000000000000000000000000000000000789)
+    │   ├─ [1374658] → new SimpleAccount@0x104fBc016F4bb334D775a19E8A6510109AC63E00
+    │   │   ├─ emit Initialized(version: 18446744073709551615 [1.844e19])
+    │   │   └─ ← [Return] 6747 bytes of code
+    │   ├─ emit AccountCreated(chainid: 11155420 [1.115e7], account: SimpleAccount: [0x104fBc016F4bb334D775a19E8A6510109AC63E00])
+    │   └─ ← [Return]
+    └─ ← [Return]
+
+  [196145] SimpleAccountTest::test_SignatureValidation_Failure_WrongSigner()
+    ├─ [0] VM::addr(<pk>) [staticcall]
+    │   └─ ← [Return] 0x476C88ED464EFD251a8b18Eb84785F7C46807873
+    ├─ [170526] SimpleAccountFactory::createAccount(0x476C88ED464EFD251a8b18Eb84785F7C46807873, 123456 [1.234e5])
+    │   ├─ [125018] → new ERC1967Proxy@0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61
+    │   │   ├─ emit Upgraded(implementation: SimpleAccount: [0x104fBc016F4bb334D775a19E8A6510109AC63E00])
+    │   │   ├─ [72012] SimpleAccount::initialize(0x476C88ED464EFD251a8b18Eb84785F7C46807873, SimpleAccountFactory: [0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f]) [delegatecall]
+    │   │   │   ├─ emit SimpleAccountInitialized(entryPoint: 0x0000000071727De22E5E9d8BAf0edAc6f37da032, owner: 0x476C88ED464EFD251a8b18Eb84785F7C46807873)
+    │   │   │   ├─ emit SimpleAccountInitialized(entryPoint: 0x0000000071727De22E5E9d8BAf0edAc6f37da032, owner: 0x476C88ED464EFD251a8b18Eb84785F7C46807873)
+    │   │   │   ├─ emit Initialized(version: 1)
+    │   │   │   └─ ← [Stop]
+    │   │   └─ ← [Return] 130 bytes of code
+    │   ├─ [3292] ERC1967Proxy::fallback(0)
+    │   │   ├─ [2985] SimpleAccount::setCreateDebt(0) [delegatecall]
+    │   │   │   └─ ← [Stop]
+    │   │   └─ ← [Return]
+    │   └─ ← [Return] ERC1967Proxy: [0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61]
+    ├─ [1561] 0x0000000071727De22E5E9d8BAf0edAc6f37da032::getUserOpHash(PackedUserOperation({ sender: 0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61, nonce: 0, initCode: 0x, callData: 0xb61d27f6000000000000000000000000e9c1301621a833c9f4f9ddc1ceaeecd331e5bb61000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000, accountGasLimits: 0x0000000000000000000000000000000000000000000000000000000000000000, preVerificationGas: 0, gasFees: 0x0000000000000000000000000000000000000000000000000000000000000000, paymasterAndData: 0x, signature: 0x })) [staticcall]
+    │   └─ ← [Return] 0xce83d0df947bbfc0dfb672cffa31631b70b0c7fe3ff9a679f50cd088c3875d5c
+    ├─ [0] VM::sign("<pk>", 0x19f4d8526c6a9a0ee6d0369b7bbff26c8eae14f623a7b3d243e9cb9c10738c4b) [staticcall]
+    │   └─ ← [Return] 27, 0x416e0c3e086905422d4b316034abdde9fc05d49eeecac0ad803cafe386cda323, 0x15665d9e8411c40d2f60b6bff0f08599aa46cc6e10fb9ebac3ca69fe5c18122c
+    ├─ [0] VM::startPrank(0x0000000071727De22E5E9d8BAf0edAc6f37da032)
+    │   └─ ← [Return]
+    ├─ [5182] ERC1967Proxy::fallback(PackedUserOperation({ sender: 0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61, nonce: 0, initCode: 0x, callData: 0xb61d27f6000000000000000000000000e9c1301621a833c9f4f9ddc1ceaeecd331e5bb61000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000, accountGasLimits: 0x0000000000000000000000000000000000000000000000000000000000000000, preVerificationGas: 0, gasFees: 0x0000000000000000000000000000000000000000000000000000000000000000, paymasterAndData: 0x, signature: 0x416e0c3e086905422d4b316034abdde9fc05d49eeecac0ad803cafe386cda32315665d9e8411c40d2f60b6bff0f08599aa46cc6e10fb9ebac3ca69fe5c18122c1b }), 0xce83d0df947bbfc0dfb672cffa31631b70b0c7fe3ff9a679f50cd088c3875d5c, 0)
+    │   ├─ [4736] SimpleAccount::validateUserOp(PackedUserOperation({ sender: 0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61, nonce: 0, initCode: 0x, callData: 0xb61d27f6000000000000000000000000e9c1301621a833c9f4f9ddc1ceaeecd331e5bb61000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000, accountGasLimits: 0x0000000000000000000000000000000000000000000000000000000000000000, preVerificationGas: 0, gasFees: 0x0000000000000000000000000000000000000000000000000000000000000000, paymasterAndData: 0x, signature: 0x416e0c3e086905422d4b316034abdde9fc05d49eeecac0ad803cafe386cda32315665d9e8411c40d2f60b6bff0f08599aa46cc6e10fb9ebac3ca69fe5c18122c1b }), 0xce83d0df947bbfc0dfb672cffa31631b70b0c7fe3ff9a679f50cd088c3875d5c, 0) [delegatecall]
+    │   │   ├─ [3000] PRECOMPILES::ecrecover(0x19f4d8526c6a9a0ee6d0369b7bbff26c8eae14f623a7b3d243e9cb9c10738c4b, 27, 29594772828396493648693023442484033118719161236412843315543758587874119623459, 9679434356846345226929483785461442178213193984547179690306940679901500936748) [staticcall]
+    │   │   │   └─ ← [Return] 0x000000000000000000000000476c88ed464efd251a8b18eb84785f7c46807873
+    │   │   └─ ← [Return] 0
+    │   └─ ← [Return] 0
+    ├─ [0] VM::stopPrank()
+    │   └─ ← [Return]
+    ├─ [0] VM::assertEq(0, 1, "Signature validation should fail with wrong signer") [staticcall]
+    │   └─ ← [Revert] Signature validation should fail with wrong signer: 0 != 1
+    └─ ← [Revert] Signature validation should fail with wrong signer: 0 != 1
+
+[PASS] test_SignatureValidation_Success() (gas: 196301)
+Traces:
+  [196301] SimpleAccountTest::test_SignatureValidation_Success()
+    ├─ [0] VM::addr(<pk>) [staticcall]
+    │   └─ ← [Return] 0x476C88ED464EFD251a8b18Eb84785F7C46807873
+    ├─ [170526] SimpleAccountFactory::createAccount(0x476C88ED464EFD251a8b18Eb84785F7C46807873, 123456 [1.234e5])
+    │   ├─ [125018] → new ERC1967Proxy@0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61
+    │   │   ├─ emit Upgraded(implementation: SimpleAccount: [0x104fBc016F4bb334D775a19E8A6510109AC63E00])
+    │   │   ├─ [72012] SimpleAccount::initialize(0x476C88ED464EFD251a8b18Eb84785F7C46807873, SimpleAccountFactory: [0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f]) [delegatecall]
+    │   │   │   ├─ emit SimpleAccountInitialized(entryPoint: 0x0000000071727De22E5E9d8BAf0edAc6f37da032, owner: 0x476C88ED464EFD251a8b18Eb84785F7C46807873)
+    │   │   │   ├─ emit SimpleAccountInitialized(entryPoint: 0x0000000071727De22E5E9d8BAf0edAc6f37da032, owner: 0x476C88ED464EFD251a8b18Eb84785F7C46807873)
+    │   │   │   ├─ emit Initialized(version: 1)
+    │   │   │   └─ ← [Stop]
+    │   │   └─ ← [Return] 130 bytes of code
+    │   ├─ [3292] ERC1967Proxy::fallback(0)
+    │   │   ├─ [2985] SimpleAccount::setCreateDebt(0) [delegatecall]
+    │   │   │   └─ ← [Stop]
+    │   │   └─ ← [Return]
+    │   └─ ← [Return] ERC1967Proxy: [0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61]
+    ├─ [1561] 0x0000000071727De22E5E9d8BAf0edAc6f37da032::getUserOpHash(PackedUserOperation({ sender: 0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61, nonce: 0, initCode: 0x, callData: 0xb61d27f6000000000000000000000000e9c1301621a833c9f4f9ddc1ceaeecd331e5bb61000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000, accountGasLimits: 0x0000000000000000000000000000000000000000000000000000000000000000, preVerificationGas: 0, gasFees: 0x0000000000000000000000000000000000000000000000000000000000000000, paymasterAndData: 0x, signature: 0x })) [staticcall]
+    │   └─ ← [Return] 0xce83d0df947bbfc0dfb672cffa31631b70b0c7fe3ff9a679f50cd088c3875d5c
+    ├─ [0] VM::sign("<pk>", 0x19f4d8526c6a9a0ee6d0369b7bbff26c8eae14f623a7b3d243e9cb9c10738c4b) [staticcall]
+    │   └─ ← [Return] 27, 0x416e0c3e086905422d4b316034abdde9fc05d49eeecac0ad803cafe386cda323, 0x15665d9e8411c40d2f60b6bff0f08599aa46cc6e10fb9ebac3ca69fe5c18122c
+    ├─ [0] VM::startPrank(0x0000000071727De22E5E9d8BAf0edAc6f37da032)
+    │   └─ ← [Return]
+    ├─ [5182] ERC1967Proxy::fallback(PackedUserOperation({ sender: 0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61, nonce: 0, initCode: 0x, callData: 0xb61d27f6000000000000000000000000e9c1301621a833c9f4f9ddc1ceaeecd331e5bb61000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000, accountGasLimits: 0x0000000000000000000000000000000000000000000000000000000000000000, preVerificationGas: 0, gasFees: 0x0000000000000000000000000000000000000000000000000000000000000000, paymasterAndData: 0x, signature: 0x416e0c3e086905422d4b316034abdde9fc05d49eeecac0ad803cafe386cda32315665d9e8411c40d2f60b6bff0f08599aa46cc6e10fb9ebac3ca69fe5c18122c1b }), 0xce83d0df947bbfc0dfb672cffa31631b70b0c7fe3ff9a679f50cd088c3875d5c, 0)
+    │   ├─ [4736] SimpleAccount::validateUserOp(PackedUserOperation({ sender: 0xe9c1301621a833C9F4f9DdC1CeAEEcD331e5bB61, nonce: 0, initCode: 0x, callData: 0xb61d27f6000000000000000000000000e9c1301621a833c9f4f9ddc1ceaeecd331e5bb61000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000, accountGasLimits: 0x0000000000000000000000000000000000000000000000000000000000000000, preVerificationGas: 0, gasFees: 0x0000000000000000000000000000000000000000000000000000000000000000, paymasterAndData: 0x, signature: 0x416e0c3e086905422d4b316034abdde9fc05d49eeecac0ad803cafe386cda32315665d9e8411c40d2f60b6bff0f08599aa46cc6e10fb9ebac3ca69fe5c18122c1b }), 0xce83d0df947bbfc0dfb672cffa31631b70b0c7fe3ff9a679f50cd088c3875d5c, 0) [delegatecall]
+    │   │   ├─ [3000] PRECOMPILES::ecrecover(0x19f4d8526c6a9a0ee6d0369b7bbff26c8eae14f623a7b3d243e9cb9c10738c4b, 27, 29594772828396493648693023442484033118719161236412843315543758587874119623459, 9679434356846345226929483785461442178213193984547179690306940679901500936748) [staticcall]
+    │   │   │   └─ ← [Return] 0x000000000000000000000000476c88ed464efd251a8b18eb84785f7c46807873
+    │   │   └─ ← [Return] 0
+    │   └─ ← [Return] 0
+    ├─ [0] VM::stopPrank()
+    │   └─ ← [Return]
+    ├─ [0] VM::assertEq(0, 0, "Signature validation should succeed") [staticcall]
+    │   └─ ← [Return]
+    └─ ← [Return]
+
+Suite result: FAILED. 1 passed; 2 failed; 0 skipped; finished in 3.80s (3.02s CPU time)
+
+Ran 1 test suite in 4.62s (3.80s CPU time): 1 tests passed, 2 failed, 0 skipped (3 total tests)
+
+Failing tests:
+Encountered 2 failing tests in test/unit/SimpleAccount.t.sol:SimpleAccountTest
+[FAIL: Signature validation should fail with tampered data: 0 != 1] test_SignatureValidation_Failure_TamperedData() (gas: 196502)
+[FAIL: Signature validation should fail with wrong signer: 0 != 1] test_SignatureValidation_Failure_WrongSigner() (gas: 196145)
+
+Encountered a total of 2 failing tests, 1 tests succeeded
+saulc@SAULPC:/mnt/i/Proyectos/contracts$
+
+
+
