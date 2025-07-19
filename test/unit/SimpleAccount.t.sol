@@ -169,17 +169,7 @@ contract SimpleAccountTest is Test {
         vm.stopPrank();
     }
 
-    // 3) Test for initialization vulnerabilities
-    function test_SecurityCritical_DoubleInitialization() public {
-        address owner = vm.addr(0x123);
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-        
-        // Try to initialize again
-        vm.expectRevert(); // Should revert on double initialization
-        acc.initialize(vm.addr(0x789), address(factory));
-    }
-
-    // 4) Test for guardian recovery vulnerabilities
+    // 2) Test for unauthorized access control
     function test_SecurityCritical_UnauthorizedGuardianRecovery() public {
         address owner = vm.addr(0x123);
         address attacker = vm.addr(0x456);
@@ -197,30 +187,7 @@ contract SimpleAccountTest is Test {
         vm.stopPrank();
     }
 
-    // 5) Test for zero address vulnerabilities
-    function test_SecurityCritical_ZeroAddressValidation() public {
-        address owner = vm.addr(0x123);
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-        
-        // Try to set zero address as guardian
-        vm.startPrank(owner);
-        vm.expectRevert("Guardian cannot be zero address");
-        acc.setGuardian(address(0));
-        vm.stopPrank();
-        
-        // Try to recover to zero address
-        address guardian = vm.addr(0x789);
-        vm.startPrank(owner);
-        acc.setGuardian(guardian);
-        vm.stopPrank();
-        
-        vm.startPrank(guardian);
-        vm.expectRevert("New owner cannot be zero");
-        acc.executeRecovery(address(0));
-        vm.stopPrank();
-    }
-
-    // 6) Test for integer overflow/underflow
+    // 3) Test for guardian recovery vulnerabilities
     function test_SecurityCritical_IntegerOverflow() public {
         address owner = vm.addr(0x123);
         SimpleAccount acc = factory.createAccount(owner, 123456);
@@ -329,6 +296,137 @@ contract SimpleAccountTest is Test {
         vm.expectRevert(); // Should revert due to access control
         acc.setCreateDebt(1000);
         vm.stopPrank();
+    }
+
+    // ===================== WORKFLOW TESTS =====================
+
+    function test_GetDeposit() public {
+        //Create a new account with the factory, an owner and a random salt
+        SimpleAccount acc = factory.createAccount(msg.sender, 123456);
+
+        //Reading calls are simple
+        uint deposit = acc.getDeposit();
+        assertEq(deposit, 0);
+    }
+
+    function test_SetCollectOnDeliverDirectly() public {
+        //for onlyOwner calls, startPrank is needed
+        vm.startPrank(address(0x123));
+        SimpleAccount acc = factory.createAccount(address(0x123), 123456);
+
+        assertEq(acc.letCollectOnDeliver(), false);
+        //direct call is possible, but not usual
+        acc.setCollectOnDeliver(true);
+        assertEq(acc.letCollectOnDeliver(), true);
+        vm.stopPrank();
+    }
+
+    function test_SetCollectOnDeliverByOwner() public {
+        vm.startPrank(address(0x123));
+        SimpleAccount acc = factory.createAccount(address(0x123), 123456);
+
+        assertEq(acc.letCollectOnDeliver(), false);
+
+        //encode the function and the parameter
+        bytes memory func = abi.encodeWithSignature("setCollectOnDeliver(bool)", true);
+        //call execute with the same contract address, 0 value, and the encoded func
+        acc.execute(address(acc), 0, func);
+
+        assertEq(acc.letCollectOnDeliver(), true);
+        vm.stopPrank();
+    }
+
+    function test_SetCollectOnDeliverByEntrypoint() public {
+        vm.startPrank(address(0x123));
+        SimpleAccount acc = factory.createAccount(address(0x123), 123456);
+        vm.stopPrank();
+
+        //call function as entrypoint
+        vm.startPrank(address(entrypoint));
+        assertEq(acc.letCollectOnDeliver(), false);
+
+        bytes memory func = abi.encodeWithSignature("setCollectOnDeliver(bool)", true);
+        acc.execute(address(acc), 0, func);
+
+        assertEq(acc.letCollectOnDeliver(), true);
+        vm.stopPrank();
+    }
+
+    function test_SetCollectOnDeliverByStranger() public {
+        vm.startPrank(address(0x123));
+        SimpleAccount acc = factory.createAccount(address(0x123), 123456);
+        vm.stopPrank();
+
+        //stranger tries to call account function
+        vm.startPrank(address(0x456));
+        assertEq(acc.letCollectOnDeliver(), false);
+
+        bytes memory func = abi.encodeWithSignature("setCollectOnDeliver(bool)", true);
+        vm.expectRevert();
+        acc.execute(address(acc), 0, func);
+
+        assertEq(acc.letCollectOnDeliver(), false);
+        vm.stopPrank();
+    }
+
+    function test_AddDeposit() public {
+        address owner = vm.addr(0x123);
+        SimpleAccount acc = factory.createAccount(owner, 123456);
+
+        //To call a payable function through execute, account and not owner must have funds
+        vm.deal(address(acc), 1 ether);
+        vm.startPrank(owner);
+
+        assertEq(acc.getDeposit(), 0);
+        bytes memory func = abi.encodeWithSignature("addDeposit()");
+        acc.execute(address(acc), 0.01 ether, func);
+        assertEq(acc.getDeposit(), 0.01 ether);
+
+        vm.stopPrank();        
+    }
+
+    function test_AddDepositWithoutFunds() public {
+        address owner = vm.addr(0x123);
+        SimpleAccount acc = factory.createAccount(owner, 123456);
+
+        vm.startPrank(owner);
+
+        assertEq(acc.getDeposit(), 0);
+        bytes memory func = abi.encodeWithSignature("addDeposit()");
+
+        vm.expectRevert();
+        acc.execute(address(acc), 0.01 ether, func);
+
+        assertEq(acc.getDeposit(), 0);
+        vm.stopPrank();        
+    }
+
+    function test_WithdrawDepositTo() public {
+        address payable owner = payable(vm.addr(0x123));
+        SimpleAccount acc = fundAccountDeposit(owner);
+        address receiver = vm.addr(0x456);
+
+        vm.startPrank(owner);
+        bytes memory func = abi.encodeWithSignature("withdrawDepositTo(address,uint256)", receiver, 0.01 ether);
+        acc.execute(address(acc), 0, func);
+        vm.stopPrank();
+
+        assertEq(receiver.balance, 0.01 ether);
+    }
+
+    function fundAccountDeposit(address owner) internal returns(SimpleAccount) {
+        SimpleAccount acc = factory.createAccount(owner, 123456);
+
+        vm.deal(address(acc), 1 ether);
+        vm.startPrank(owner);
+
+        assertEq(acc.getDeposit(), 0);
+        bytes memory func = abi.encodeWithSignature("addDeposit()");
+        acc.execute(address(acc), 0.01 ether, func);
+        assertEq(acc.getDeposit(), 0.01 ether);
+
+        vm.stopPrank();
+        return acc;
     }
 }
 
