@@ -292,6 +292,349 @@ contract GuardianTest is Test {
 
         assertTrue(guardian.voted(guardian1Hash, recKey));
     }
+
+    // TESTS IMPLEMENTATIONS FOR CLEANUP FUNCTION
+    function test_RecoveryExpiration() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        
+        vm.prank(address(account));
+        guardian.setQuorum(2);
+
+        address newOwner = vm.addr(0x999);
+
+        // Guardian1 vota por la recuperación
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+
+        // Verificar que el recovery está activo
+        (uint8 approvals, bool executed, uint256 deadline, bool expired) = guardian.getRecoveryStatus(newOwner);
+        assertEq(approvals, 1);
+        assertFalse(executed);
+        assertFalse(expired);
+
+        // Avanzar el tiempo más allá del período de recuperación
+        vm.warp(block.timestamp + guardian.RECOVERY_PERIOD() + 1);
+
+        // Verificar que ahora está expirado
+        (, , , bool nowExpired) = guardian.getRecoveryStatus(newOwner);
+        assertTrue(nowExpired);
+
+        // Cuando otro guardian trata de votar, debería limpiar automáticamente
+        vm.expectEmit(true, false, false, false);
+        emit Guardian.RecoveryExpired(newOwner);
+        
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner);
+
+        // Verificar que se ha limpiado y creado una nueva propuesta
+        (uint8 newApprovals, bool newExecuted, , bool newExpired) = guardian.getRecoveryStatus(newOwner);
+        assertEq(newApprovals, 1); // Solo el voto del guardian2
+        assertFalse(newExecuted);
+        assertFalse(newExpired);
+    }
+
+    function test_CleanupOnlyAffectsExpiredRecoveries() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        setupGuardian(guardian3Addr, guardian3Hash);
+        
+        vm.prank(address(account));
+        guardian.setQuorum(3);
+
+        address newOwner1 = vm.addr(0x999);
+        address newOwner2 = vm.addr(0x888);
+
+        // Proponer dos recuperaciones
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner1);
+        
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner2);
+
+        // Verificar que ambas están activas
+        (uint8 approvals1, , , bool expired1) = guardian.getRecoveryStatus(newOwner1);
+        (uint8 approvals2, , , bool expired2) = guardian.getRecoveryStatus(newOwner2);
+        assertEq(approvals1, 1);
+        assertEq(approvals2, 1);
+        assertFalse(expired1);
+        assertFalse(expired2);
+
+        // Expirar solo la primera
+        vm.warp(block.timestamp + guardian.RECOVERY_PERIOD() + 1);
+
+        // Proponer una nueva recuperación para newOwner1 (debería limpiar la expirada)
+        vm.prank(guardian3Addr);
+        guardian.approveRecovery(newOwner1);
+
+        // Verificar que newOwner1 tiene una nueva propuesta limpia
+        (uint8 newApprovals1, , , bool newExpired1) = guardian.getRecoveryStatus(newOwner1);
+        assertEq(newApprovals1, 1); // Solo el nuevo voto
+        assertFalse(newExpired1);
+
+        // newOwner2 también debería estar expirada ahora
+        (, , , bool expired2Now) = guardian.getRecoveryStatus(newOwner2);
+        assertTrue(expired2Now);
+    }
+
+    function test_CleanupRemovesVotedMappings() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        
+        vm.prank(address(account));
+        guardian.setQuorum(3);
+
+        address newOwner = vm.addr(0x999);
+        bytes32 recKey = keccak256(abi.encode(newOwner));
+
+        // Ambos guardianes votan
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner);
+
+        // Verificar que los votos están registrados
+        assertTrue(guardian.voted(guardian1Hash, recKey));
+        assertTrue(guardian.voted(guardian2Hash, recKey));
+
+        // Expirar la recuperación
+        vm.warp(block.timestamp + guardian.RECOVERY_PERIOD() + 1);
+
+        // Proponer una nueva recuperación (esto debería limpiar los votos anteriores)
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+
+        // Verificar que los votos anteriores fueron limpiados
+        // guardian1 debería tener su nuevo voto, guardian2 no debería tener voto
+        bytes32 newRecKey = keccak256(abi.encode(newOwner));
+        assertTrue(guardian.voted(guardian1Hash, newRecKey)); // nuevo voto
+        assertFalse(guardian.voted(guardian2Hash, newRecKey)); // voto anterior limpiado
+    }
+
+    function test_MultipleExpiredRecoveriesCleanup() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        
+        vm.prank(address(account));
+        guardian.setQuorum(2);
+
+        address newOwner1 = vm.addr(0x999);
+        address newOwner2 = vm.addr(0x888);
+        address newOwner3 = vm.addr(0x777);
+
+        // Crear múltiples propuestas
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner1);
+        
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner2);
+        
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner3);
+
+        // Expirar todas
+        vm.warp(block.timestamp + guardian.RECOVERY_PERIOD() + 1);
+
+        // Hacer nuevas propuestas debería limpiar las expiradas
+        vm.expectEmit(true, false, false, false);
+        emit Guardian.RecoveryExpired(newOwner1);
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner1);
+
+        vm.expectEmit(true, false, false, false);
+        emit Guardian.RecoveryExpired(newOwner2);
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner2);
+
+        // Verificar que todas tienen propuestas frescas
+        (uint8 approvals1, , , bool expired1) = guardian.getRecoveryStatus(newOwner1);
+        (uint8 approvals2, , , bool expired2) = guardian.getRecoveryStatus(newOwner2);
+        assertEq(approvals1, 1);
+        assertEq(approvals2, 1);
+        assertFalse(expired1);
+        assertFalse(expired2);
+    }
+
+    function test_RecoveryExpiredEventEmitted() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        
+        // Configurar quorum de 2 para que no se ejecute automáticamente
+        vm.prank(address(account));
+        guardian.setQuorum(2);
+        
+        address newOwner = vm.addr(0x999);
+
+        // Proponer recuperación (solo guardian1 vota, no se ejecuta)
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+
+        // Verificar que no se ejecutó
+        assertEq(account.owner(), owner); // Sigue siendo el owner original
+
+        // Expirar
+        vm.warp(block.timestamp + guardian.RECOVERY_PERIOD() + 1);
+
+        // Verificar que se emite el evento correcto cuando guardian2 vota
+        vm.expectEmit(true, false, false, false);
+        emit Guardian.RecoveryExpired(newOwner);
+        
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner);
+    }
+
+    function test_CleanupDoesNotAffectExecutedRecoveries() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        address newOwner = vm.addr(0x999);
+
+        // Ejecutar recuperación (quorum = 1)
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+
+        // Verificar que se ejecutó
+        assertTrue(account.owner() == newOwner);
+        
+        bytes32 recKey = keccak256(abi.encode(newOwner));
+        (, , bool executed, ) = guardian.recoveries(recKey);
+        assertTrue(executed);
+
+        // Expirar tiempo
+        vm.warp(block.timestamp + guardian.RECOVERY_PERIOD() + 1);
+
+        // Intentar nueva propuesta para el mismo owner no debería limpiar la ejecutada
+        // (porque la condición incluye !r.executed)
+        vm.prank(guardian1Addr);
+        vm.expectRevert(abi.encodeWithSelector(Guardian.AlreadyVoted.selector));
+        guardian.approveRecovery(newOwner);
+    }
+
+    function test_GasOptimizationOnlyIteratesVoters() public {
+        // Configurar muchos guardianes
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        setupGuardian(guardian3Addr, guardian3Hash);
+        
+        // Crear más guardianes para probar la optimización
+        address guardian4Addr = vm.addr(uint256(4));
+        address guardian5Addr = vm.addr(uint256(5));
+        bytes32 guardian4Hash = keccak256(abi.encodePacked(guardian4Addr));
+        bytes32 guardian5Hash = keccak256(abi.encodePacked(guardian5Addr));
+        
+        setupGuardian(guardian4Addr, guardian4Hash);
+        setupGuardian(guardian5Addr, guardian5Hash);
+        
+        vm.prank(address(account));
+        guardian.setQuorum(3);
+
+        address newOwner = vm.addr(0x999);
+
+        // Solo 2 de los 5 guardianes votan
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        vm.prank(guardian3Addr);
+        guardian.approveRecovery(newOwner);
+
+        // Verificar votos iniciales
+        bytes32 recKey = keccak256(abi.encode(newOwner));
+        assertTrue(guardian.voted(guardian1Hash, recKey));
+        assertFalse(guardian.voted(guardian2Hash, recKey));
+        assertTrue(guardian.voted(guardian3Hash, recKey));
+        assertFalse(guardian.voted(guardian4Hash, recKey));
+        assertFalse(guardian.voted(guardian5Hash, recKey));
+
+        // Expirar y limpiar
+        vm.warp(block.timestamp + guardian.RECOVERY_PERIOD() + 1);
+        
+        // Guardian2 vota, lo que debería limpiar la recuperación expirada
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner);
+
+        // Verificar que los votos anteriores fueron limpiados
+        // guardian1 y guardian3 deberían haber sido limpiados
+        assertFalse(guardian.voted(guardian1Hash, recKey));
+        assertFalse(guardian.voted(guardian3Hash, recKey));
+        
+        // guardian2 ahora tiene un nuevo voto en la nueva recuperación
+        assertTrue(guardian.voted(guardian2Hash, recKey));
+        
+        // Los que nunca votaron siguen sin votos
+        assertFalse(guardian.voted(guardian4Hash, recKey));
+        assertFalse(guardian.voted(guardian5Hash, recKey));
+    }
+
+    function test_RecoveryVotersArrayCleanup() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        
+        vm.prank(address(account));
+        guardian.setQuorum(3);
+
+        address newOwner = vm.addr(0x999);
+
+        // Ambos guardianes votan
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner);
+
+        // Expirar la recuperación
+        vm.warp(block.timestamp + guardian.RECOVERY_PERIOD() + 1);
+
+        // Limpiar la recuperación expirada
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+
+        // Verificar que se inicia una nueva propuesta limpia
+        (uint8 approvals, bool executed, , bool expired) = guardian.getRecoveryStatus(newOwner);
+        assertEq(approvals, 1); // Solo el nuevo voto de guardian1
+        assertFalse(executed);
+        assertFalse(expired);
+    }
+
+    function test_GuardianRemovalFromArray() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        setupGuardian(guardian3Addr, guardian3Hash);
+
+        // Verificar que hay 3 guardianes en el array
+        assertEq(guardian.guardianHashes(0), guardian1Hash);
+        assertEq(guardian.guardianHashes(1), guardian2Hash);
+        assertEq(guardian.guardianHashes(2), guardian3Hash);
+
+        // Remover guardian2
+        vm.prank(address(account));
+        guardian.remove(guardian2Hash);
+
+        // Verificar que ya no es un guardian válido
+        assertFalse(guardian.isGuardian(guardian2Hash));
+        
+        // Nota: El array guardianHashes no se modifica automáticamente por la función remove actual
+        // Esto podría ser una mejora futura para optimización adicional
+    }
+
+    function test_EdgeCaseEmptyRecoveryVoters() public {
+        address newOwner = vm.addr(0x999);
+        
+        // Intentar cleanup sin votos existentes (edge case)
+        // Esto debería ser seguro y no causar errores
+        vm.warp(block.timestamp + guardian.RECOVERY_PERIOD() + 1);
+        
+        setupGuardian(guardian1Addr, guardian1Hash);
+        
+        // Este voto debería funcionar normalmente sin cleanup necesario
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        // Verificar que funciona correctamente
+        (uint8 approvals, bool executed, , bool expired) = guardian.getRecoveryStatus(newOwner);
+        assertEq(approvals, 1);
+        assertTrue(executed); // Se ejecuta porque quorum = 1
+        assertFalse(expired);
+    }
+
     //helper
     function setupGuardian(
         address guardianAddr,

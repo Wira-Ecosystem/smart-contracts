@@ -19,14 +19,15 @@ contract Guardian {
         uint256 proposedAt;
     }
 
-
-
     struct GuardianInfo {
         Status state;
         uint40 invitedAt;
     }
 
     address public immutable owner; // address from SimpleAccount to delegate gaurdians
+    //address[] public guardianHashes; // Mal no coincide con el tipo real que se usa
+    bytes32[] public guardianHashes;
+
     uint8 public requiredApprovals = 1;
     uint256 public constant RECOVERY_PERIOD = 3 days;
 
@@ -35,6 +36,8 @@ contract Guardian {
     mapping(bytes32 => mapping(bytes32 => bool)) public voted;
 
     mapping(address => bytes32) public guardianAddressToHash;
+    /// @dev Track guardians who voted in a given recovery (for efficient cleanup)
+    mapping(bytes32 => address[]) internal recoveryVoters;
 
     event GuardianInvited(bytes32 indexed did);
     event GuardianAccepted(
@@ -46,10 +49,11 @@ contract Guardian {
     event RecoveryProposed(address indexed newOwner, uint256 deadline);
     event RecoveryApproved(address indexed newOwner, bytes32 indexed guardian);
     event RecoveryExecuted(address indexed newOwner);
+    event RecoveryExpired(address owner);
 
     error NotAuthorized();
     error InvalidGuardian();
-    error RecoveryExpired();
+    error RecoveryPeriodExpired();
     error AlreadyVoted();
     error GuardianNotAccepted();
 
@@ -88,6 +92,7 @@ contract Guardian {
 
         g.state = Status.ACCEPTED;
         guardianAddressToHash[msg.sender] = guardianHash;
+        guardianHashes.push(guardianHash); // aquí agregamos guardianHash al array
         emit GuardianAccepted(guardianHash, msg.sender);
     }
 
@@ -105,7 +110,10 @@ contract Guardian {
     function isGuardian(bytes32 h) external view returns (bool) {
         return guardians[h].state == Status.ACCEPTED;
     }
+
     function approveRecovery(address newOwner) external onlyActiveGuardian {
+        _cleanup(newOwner);
+
         require(newOwner != address(0), "Invalid new owner");
 
         bytes32 guardianHash = guardianAddressToHash[msg.sender];
@@ -122,13 +130,14 @@ contract Guardian {
         }
 
         if (block.timestamp > r.proposedAt + RECOVERY_PERIOD) {
-            revert RecoveryExpired();
+            revert RecoveryPeriodExpired();
         }
 
         voted[guardianHash][recKey] = true;
+        recoveryVoters[recKey].push(msg.sender); // optimización: guardamos solo los que votan
+
         r.approvals += 1;
         emit RecoveryApproved(newOwner, guardianHash);
-
 
         if (!r.executed && r.approvals >= requiredApprovals) {
             r.executed = true;
@@ -149,10 +158,6 @@ contract Guardian {
 
         return (
             r.approvals,
-
-
-
-            
             r.executed,
             r.proposedAt + RECOVERY_PERIOD,
             block.timestamp > r.proposedAt + RECOVERY_PERIOD
@@ -163,5 +168,29 @@ contract Guardian {
         address guardianAddr
     ) external view returns (bytes32) {
         return guardianAddressToHash[guardianAddr];
+    }
+
+    /// @dev Limpia votos y recuperaciones expiradas usando lista local de votantes
+    /// Ahorra gas evitando iterar sobre todos los guardianes
+    function _cleanup(address ownerToClean) internal {
+        bytes32 recKey = keccak256(abi.encode(ownerToClean));
+        Recovery storage r = recoveries[recKey];
+
+        if (
+            r.newOwner != address(0) &&
+            block.timestamp > r.proposedAt + RECOVERY_PERIOD &&
+            !r.executed
+        ) {
+            // Solo iteramos sobre guardianes que votaron
+            address[] storage voters = recoveryVoters[recKey];
+            for (uint256 i = 0; i < voters.length; i++) {
+                bytes32 gHash = guardianAddressToHash[voters[i]];
+                delete voted[gHash][recKey];
+            }
+
+            delete recoveryVoters[recKey]; // limpiamos también la lista de votantes
+            delete recoveries[recKey];
+            emit RecoveryExpired(ownerToClean);
+        }
     }
 }
