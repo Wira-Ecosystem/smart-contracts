@@ -49,12 +49,10 @@ contract Guardian {
     event RecoveryProposed(address indexed newOwner, uint256 deadline);
     event RecoveryApproved(address indexed newOwner, bytes32 indexed guardian);
     event RecoveryExecuted(address indexed newOwner);
-    event RecoveryExpiredEvent(address indexed owner);
     event RecoveryExpired(address owner);
 
     error NotAuthorized();
     error InvalidGuardian();
-    //error RecoveryExpired();
     error RecoveryPeriodExpired();
     error AlreadyVoted();
     error GuardianNotAccepted();
