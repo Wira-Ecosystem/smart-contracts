@@ -1,67 +1,56 @@
 // SPDX-License-Identifier: GPL-3.0
-// Define la licencia del contrato como GPL-3.0
-
 pragma solidity ^0.8.24;
-// Especifica la versión del compilador de Solidity requerido
 
 // Import the required libraries and contracts
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-// Importa la interfaz para metadatos de tokens ERC20
-
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-// Importa utilidades para manejar tokens ERC20 de forma segura
 
 import "@account-abstraction/interfaces/IEntryPoint.sol";
-// Importa la interfaz para el EntryPoint
-
 import "@account-abstraction/core/BasePaymaster.sol";
-// Importa la clase base para Paymasters
-
 import "@account-abstraction/core/Helpers.sol";
-// Importa funciones auxiliares para operaciones de usuario
 
 import {SimpleAccount} from "./SimpleAccount.sol";
-// Importa el contrato SimpleAccount
-
 import "./transferer/CrossChainTransferer.sol";
-// Importa el manejador de transferencias entre cadenas
 
 /// @title Sample ERC-20 Token Paymaster for ERC-4337
-/// Paymaster que cubre las tarifas de gas a cambio de tokens ERC20.
-/// Permite el reembolso de tokens excedentes si el costo de gas es menor al estimado.
+/// This Paymaster covers gas fees in exchange for ERC20 tokens charged using allowance pre-issued by ERC-4337 accounts.
+/// The contract refunds excess tokens if the actual gas cost is lower than the initially provided amount.
+/// The token price cannot be queried in the validation code due to storage access restrictions of ERC-4337.
+/// The price is cached inside the contract and is updated in the 'postOp' stage if the change is >10%.
+/// It is theoretically possible the token has depreciated so much since the last 'postOp' the refund becomes negative.
+/// The contract reverts the inner user transaction in that case but keeps the charge.
+/// The contract also allows honest clients to prepay tokens at a higher price to avoid getting reverted.
+/// It also allows updating price configuration and withdrawing tokens by the contract owner.
+/// The contract uses an Oracle to fetch the latest token prices.
+/// @dev Inherits from BasePaymaster.
 contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
 
     using UserOperationLib for PackedUserOperation;
-    // Habilita el uso de funciones de la librería UserOperationLib
 
     struct TokenPaymasterConfig {
+        /// @notice The price markup percentage applied to the token price (1e26 = 100%). Ranges from 1e26 to 2e26
         uint256 priceMarkup;
-        // Porcentaje de aumento aplicado al precio del token
 
+        /// @notice Exchange tokens to native currency if the EntryPoint balance of this Paymaster falls below this value
         uint128 minEntryPointBalance;
-        // Balance mínimo en el EntryPoint para intercambiar tokens
 
+        /// @notice Estimated gas cost for refunding tokens after the transaction is completed
         uint48 refundPostopCost;
-        // Costo estimado de gas para reembolsar tokens después de la transacción
 
+        /// @notice Transactions are only valid as long as the cached price is not older than this value
         uint48 priceMaxAge;
-        // Edad máxima del precio en caché para validar transacciones
     }
 
     event ConfigUpdated(TokenPaymasterConfig tokenPaymasterConfig);
-    // Evento emitido cuando se actualiza la configuración del Paymaster
 
     event UserOperationSponsored(address indexed user, uint256 actualTokenCharge, uint256 actualGasCost, uint256 actualTokenPriceWithMarkup);
-    // Evento emitido cuando se patrocina una operación de usuario
 
     event Received(address indexed sender, uint256 value);
-    // Evento emitido cuando el contrato recibe Ether
 
+    /// @notice All 'price' variables are multiplied by this value to avoid rounding up
     uint256 private constant PRICE_DENOMINATOR = 1e26;
-    // Constante para evitar redondeos en cálculos de precios
 
     TokenPaymasterConfig public tokenPaymasterConfig;
-    // Configuración actual del Paymaster
 
     /// @notice Initializes the TokenPaymaster contract with the given parameters.
     /// @param _token The ERC20 token used for transaction fee payments.
@@ -102,10 +91,7 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
     )
     {
         setTokenPaymasterConfig(_tokenPaymasterConfig);
-        // Configura la configuración inicial del Paymaster
-
         transferOwnership(_owner);
-        // Transfiere la propiedad del contrato al propietario especificado
     }
 
     /// @notice Updates the configuration for the Token Paymaster.
@@ -114,16 +100,9 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
         TokenPaymasterConfig memory _tokenPaymasterConfig
     ) public onlyOwner {
         require(_tokenPaymasterConfig.priceMarkup <= 2 * PRICE_DENOMINATOR, "TPM: price markup too high");
-        // Asegura que el aumento de precio no sea mayor al doble del denominador
-
         require(_tokenPaymasterConfig.priceMarkup >= PRICE_DENOMINATOR, "TPM: price markup too low");
-        // Asegura que el aumento de precio no sea menor al denominador
-
         tokenPaymasterConfig = _tokenPaymasterConfig;
-        // Actualiza la configuración del Paymaster
-
         emit ConfigUpdated(_tokenPaymasterConfig);
-        // Emite un evento de actualización de configuración
     }
 
     /// @notice Update token decimals
@@ -131,14 +110,12 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
         uint8 _tokenDecimals
     ) public onlyOwner{
         tokenDecimalsPower = 10 ** _tokenDecimals;
-        // Configura la potencia de decimales del token
     }
 
     function setUniswapConfiguration(
         UniswapHelperConfig memory _uniswapHelperConfig
     ) external onlyOwner {
         _setUniswapHelperConfiguration(_uniswapHelperConfig);
-        // Configura la integración con Uniswap
     }
 
     /// @notice Allows the contract owner to withdraw a specified amount of tokens from the contract.
@@ -146,7 +123,6 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
     /// @param amount The amount of tokens to transfer.
     function withdrawToken(address to, uint256 amount) external onlyOwner {
         SafeERC20.safeTransfer(token, to, amount);
-        // Permite al propietario retirar tokens del contrato
     }
 
     /// @notice Validates a paymaster user operation and calculates the required token amount for the transaction.
