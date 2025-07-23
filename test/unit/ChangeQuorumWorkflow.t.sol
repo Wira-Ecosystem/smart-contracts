@@ -205,5 +205,275 @@ contract ChangeQuorumWorkflowTest is Test {
         // Verificar que el guardian está activo
         assertTrue(guardian.isGuardian(guardianHash));
     }
+
+
+    // ========== CASOS CRÍTICOS ADICIONALES ==========
+    
+    function test_QuorumChangeHigherThanAvailableGuardians() public {
+        // Configurar solo 2 guardians
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+
+        // Intentar establecer quorum más alto que guardians disponibles
+        vm.prank(address(account));
+        guardian.setQuorum(5); // 5 > 2 guardians disponibles
+
+        // Debería permitirse pero hacer imposible la recuperación
+        assertEq(guardian.requiredApprovals(), 5);
+        
+        address newOwner = vm.addr(0x999);
+        
+        // Ambos guardians votan pero no debería ejecutarse
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner);
+        
+        // La recuperación NO debería ejecutarse
+        assertNotEq(account.owner(), newOwner);
+        
+        (uint8 approvals, bool executed,,) = guardian.getRecoveryStatus(newOwner);
+        assertEq(approvals, 2);
+        assertFalse(executed);
+    }
+
+    function test_QuorumChangeToMaxUint8() public {
+        // Probar con el valor máximo de uint8
+        vm.prank(address(account));
+        guardian.setQuorum(255);
+        
+        assertEq(guardian.requiredApprovals(), 255);
+        
+        // Verificar que el evento se emite correctamente
+        vm.prank(address(account));
+        vm.expectEmit(true, false, false, true);
+        emit Guardian.QuorumChanged(100);
+        guardian.setQuorum(100);
+    }
+
+    function test_QuorumChangeAffectsOngoingRecovery() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        setupGuardian(guardian3Addr, guardian3Hash);
+        
+        // Iniciar recuperación con quorum 1
+        address newOwner = vm.addr(0x999);
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        // Verificar que se ejecutó con quorum 1
+        assertEq(account.owner(), newOwner);
+        
+        // Cambiar el quorum para futuras recuperaciones
+        vm.prank(address(account));
+        guardian.setQuorum(3);
+        
+        // Intentar nueva recuperación con nuevo quorum
+        address newOwner2 = vm.addr(0x888);
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner2);
+        
+        // No debería ejecutarse con solo 1 voto
+        assertEq(account.owner(), newOwner); // Sigue siendo el anterior
+    }
+
+    function test_QuorumChangeAfterSomeVotesButBeforeExecution() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        setupGuardian(guardian3Addr, guardian3Hash);
+        
+        // Establecer quorum alto inicialmente
+        vm.prank(address(account));
+        guardian.setQuorum(3);
+        
+        address newOwner = vm.addr(0x999);
+        address originalOwner = account.owner();
+        
+        // Dos guardians votan pero no es suficiente
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner);
+        
+        // Verificar que aún no se ejecutó
+        assertEq(account.owner(), originalOwner);
+        
+        // Cambiar quorum a 2 (debería ejecutarse ahora? NO - solo afecta nuevas recuperaciones)
+        vm.prank(address(account));
+        guardian.setQuorum(2);
+        
+        // La recuperación existente sigue necesitando 3 votos (valor al momento de inicio)
+        assertEq(account.owner(), originalOwner);
+        
+        // El tercer voto debería ejecutarla
+        vm.prank(guardian3Addr);
+        guardian.approveRecovery(newOwner);
+        
+        assertEq(account.owner(), newOwner);
+    }
+
+    function test_RemoveGuardianAfterQuorumChange() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        setupGuardian(guardian3Addr, guardian3Hash);
+        
+        // Establecer quorum alto
+        vm.prank(address(account));
+        guardian.setQuorum(3);
+        
+        // Remover un guardian
+        vm.prank(address(account));
+        guardian.remove(guardian3Hash);
+        
+        // Ahora solo quedan 2 guardians pero el quorum sigue siendo 3
+        assertEq(guardian.requiredApprovals(), 3);
+        assertFalse(guardian.isGuardian(guardian3Hash));
+        
+        // Intentar recuperación - debería ser imposible
+        address newOwner = vm.addr(0x999);
+        
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner);
+        
+        // No debería ejecutarse
+        assertNotEq(account.owner(), newOwner);
+        
+        (uint8 approvals, bool executed,,) = guardian.getRecoveryStatus(newOwner);
+        assertEq(approvals, 2);
+        assertFalse(executed);
+    }
+
+    function test_QuorumChangeWithRemovedGuardianVotes() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        setupGuardian(guardian3Addr, guardian3Hash);
+        
+        vm.prank(address(account));
+        guardian.setQuorum(3);
+        
+        address newOwner = vm.addr(0x999);
+        
+        // Guardian1 vota
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        // Remover guardian1 después de que votó
+        vm.prank(address(account));
+        guardian.remove(guardian1Hash);
+        
+        // Guardian2 y Guardian3 votan
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner);
+        
+        vm.prank(guardian3Addr);
+        guardian.approveRecovery(newOwner);
+        
+        // La recuperación debería ejecutarse (3 votos totales)
+        assertEq(account.owner(), newOwner);
+    }
+
+    function test_MultipleQuorumChangesInSingleRecovery() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        
+        // Iniciar con quorum 1
+        address newOwner = vm.addr(0x999);
+        
+        // Cambiar a quorum 2 antes de votar
+        vm.prank(address(account));
+        guardian.setQuorum(2);
+        
+        // Primer voto
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        assertNotEq(account.owner(), newOwner);
+        
+        // Cambiar quorum otra vez (no debería afectar recuperación en curso)
+        vm.prank(address(account));
+        guardian.setQuorum(1);
+        
+        // La recuperación sigue necesitando 2 votos
+        assertNotEq(account.owner(), newOwner);
+        
+        // Segundo voto debería ejecutar
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner);
+        
+        assertEq(account.owner(), newOwner);
+    }
+
+    function test_QuorumChangeAfterRecoveryExpired() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        
+        vm.prank(address(account));
+        guardian.setQuorum(2);
+        
+        address newOwner = vm.addr(0x999);
+        
+        // Solo un voto
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        // Avanzar tiempo para que expire
+        vm.warp(block.timestamp + 4 days);
+        
+        // Cambiar quorum después de expiración
+        vm.prank(address(account));
+        guardian.setQuorum(1);
+        
+        // Intentar votar debería limpiar la recuperación expirada
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner); // Esto debería crear nueva propuesta
+        
+        // Debería ejecutarse inmediatamente con quorum 1
+        assertEq(account.owner(), newOwner);
+    }
+
+    function test_QuorumBoundaryConditions() public {
+        // Test quorum = 1
+        vm.prank(address(account));
+        guardian.setQuorum(1);
+        assertEq(guardian.requiredApprovals(), 1);
+        
+        // Test incremento gradual
+        for(uint8 i = 2; i <= 10; i++) {
+            vm.prank(address(account));
+            guardian.setQuorum(i);
+            assertEq(guardian.requiredApprovals(), i);
+        }
+        
+        // Test valor muy alto
+        vm.prank(address(account));
+        guardian.setQuorum(200);
+        assertEq(guardian.requiredApprovals(), 200);
+    }
+
+    function test_QuorumChangeEventSequence() public {
+        // Verificar múltiples cambios de quorum y sus eventos
+        vm.startPrank(address(account));
+        
+        vm.expectEmit(true, false, false, true);
+        emit Guardian.QuorumChanged(5);
+        guardian.setQuorum(5);
+        
+        vm.expectEmit(true, false, false, true);
+        emit Guardian.QuorumChanged(1);
+        guardian.setQuorum(1);
+        
+        vm.expectEmit(true, false, false, true);
+        emit Guardian.QuorumChanged(255);
+        guardian.setQuorum(255);
+        
+        vm.stopPrank();
+        
+        assertEq(guardian.requiredApprovals(), 255);
+    }
 }
 
