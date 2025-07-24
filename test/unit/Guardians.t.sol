@@ -108,7 +108,12 @@ contract GuardianTest is Test {
     }
 
     function test_SetQuorum() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        setupGuardian(guardian3Addr, guardian3Hash);
+
         vm.prank(address(account));
+
         guardian.setQuorum(3);
         assertEq(guardian.requiredApprovals(), 3);
     }
@@ -165,12 +170,13 @@ contract GuardianTest is Test {
     }
 
     function test_ApproveRecoveryMultipleGuardians() public {
-        vm.prank(address(account));
-        guardian.setQuorum(2);
-
         setupGuardian(guardian1Addr, guardian1Hash);
         setupGuardian(guardian2Addr, guardian2Hash);
         setupGuardian(guardian3Addr, guardian3Hash);
+        
+        vm.prank(address(account));
+
+        guardian.setQuorum(2); // DESPUE DE TENER LOS GUARDIANES SE puede setear el quorum
 
         address newOwner = vm.addr(0x999);
 
@@ -191,12 +197,13 @@ contract GuardianTest is Test {
     }
 
     function test_MultipleRecoveryProposals() public {
-        vm.prank(address(account));
-        guardian.setQuorum(2);
-
         setupGuardian(guardian1Addr, guardian1Hash);
         setupGuardian(guardian2Addr, guardian2Hash);
         setupGuardian(guardian3Addr, guardian3Hash);
+
+        vm.prank(address(account));
+        
+        guardian.setQuorum(2);
 
         address newOwner1 = vm.addr(0x999);
         address newOwner2 = vm.addr(0x888);
@@ -380,7 +387,8 @@ contract GuardianTest is Test {
     function test_CleanupRemovesVotedMappings() public {
         setupGuardian(guardian1Addr, guardian1Hash);
         setupGuardian(guardian2Addr, guardian2Hash);
-        
+        setupGuardian(guardian3Addr, guardian3Hash);
+
         vm.prank(address(account));
         guardian.setQuorum(3);
 
@@ -567,7 +575,8 @@ contract GuardianTest is Test {
     function test_RecoveryVotersArrayCleanup() public {
         setupGuardian(guardian1Addr, guardian1Hash);
         setupGuardian(guardian2Addr, guardian2Hash);
-        
+        setupGuardian(guardian3Addr, guardian3Hash);
+
         vm.prank(address(account));
         guardian.setQuorum(3);
 
@@ -633,6 +642,22 @@ contract GuardianTest is Test {
         assertEq(approvals, 1);
         assertTrue(executed); // Se ejecuta porque quorum = 1
         assertFalse(expired);
+    }
+
+    // QUE EL QUORUM NO SEA MAYOR AL NÚMERO DE GUARDIANES
+    function test_SetQuorumGreaterThanGuardians() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        setupGuardian(guardian3Addr, guardian3Hash);
+
+        vm.prank(address(account));
+
+        // Esperamos que la transacción sea revertida con el error esperado
+        uint8 invalidQuorum = 4;  // Quórum mayor que el número de guardianes (3)
+        
+        // Revertir con el error específico y los valores correctos
+        vm.expectRevert(bytes("QuorumExceeded(4, 3)"));
+        guardian.setQuorum(invalidQuorum);
     }
 
     //helper
