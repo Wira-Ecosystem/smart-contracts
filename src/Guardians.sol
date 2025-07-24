@@ -27,7 +27,7 @@ contract Guardian {
     address public immutable owner; // address from SimpleAccount to delegate gaurdians
     //address[] public guardianHashes; // Mal no coincide con el tipo real que se usa
     bytes32[] public guardianHashes;
-    // uint8 public totalGuards;
+    uint8 public totalGuards;
 
     uint8 public requiredApprovals = 1;
     uint256 public constant RECOVERY_PERIOD = 3 days;
@@ -95,19 +95,19 @@ contract Guardian {
         g.state = Status.ACCEPTED;
         guardianAddressToHash[msg.sender] = guardianHash;
         guardianHashes.push(guardianHash); // aquí agregamos guardianHash al array
-        // totalGuards += 1;
+        totalGuards += 1;
         emit GuardianAccepted(guardianHash, msg.sender);
     }
 
     function remove(bytes32 guardianHash) external onlyOwner {
         delete guardians[guardianHash];
-        // totalGuards -= 1;
+        totalGuards -= 1;
         emit GuardianRemoved(guardianHash);
     }
 
     function setQuorum(uint8 q) external onlyOwner {
         require(q > 0, "zero");
-        uint8 totalGuards = uint8(guardianHashes.length);
+        // uint8 totalGuards = uint8(guardianHashes.length);
         require(q <= totalGuards, QuorumExceeded(q, totalGuards));
 
         requiredApprovals = q;
