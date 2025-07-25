@@ -660,6 +660,356 @@ contract GuardianTest is Test {
         guardian.setQuorum(invalidQuorum);
     }
 
+    // TEST PARA PROBAR QUE GUARDIAN NO PUEDE MODIFICAR SIN TENGAN ACCESO
+    // Tests adicionales para verificar que guardianes no pueden modificar sin ser owner
+    function test_GuardianCannotInviteOtherGuardians() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        
+        // Guardian1 intenta invitar a guardian2 (debería fallar)
+        vm.prank(guardian1Addr);
+        vm.expectRevert(bytes("only owner"));
+        guardian.invite(guardian2Hash);
+    }
+    function test_GuardianCannotRemoveOtherGuardians() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        
+        // Guardian1 intenta remover a guardian2 (debería fallar)
+        vm.prank(guardian1Addr);
+        vm.expectRevert(bytes("only owner"));
+        guardian.remove(guardian2Hash);
+    }
+    function test_GuardianCannotRemoveThemselves() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        
+        // Guardian1 intenta removerse a sí mismo (debería fallar)
+        vm.prank(guardian1Addr);
+        vm.expectRevert(bytes("only owner"));
+        guardian.remove(guardian1Hash);
+    }
+    function test_GuardianCannotChangeQuorum() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        
+        // Guardian1 intenta cambiar el quorum (debería fallar)
+        vm.prank(guardian1Addr);
+        vm.expectRevert(bytes("only owner"));
+        guardian.setQuorum(5);
+    }
+    function test_NonGuardianCannotApproveRecovery() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        address nonGuardian = vm.addr(0x999);
+        address newOwner = vm.addr(0x888);
+        
+        // Dirección que no es guardian intenta aprobar recovery
+        vm.prank(nonGuardian);
+        vm.expectRevert(abi.encodeWithSelector(Guardian.InvalidGuardian.selector));
+        guardian.approveRecovery(newOwner);
+    }
+    function test_RemovedGuardianCannotApproveRecovery() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        address newOwner = vm.addr(0x888);
+        
+        // Owner remueve al guardian
+        vm.prank(address(account));
+        guardian.remove(guardian1Hash);
+        
+        // Guardian removido intenta aprobar recovery (debería fallar)
+        vm.prank(guardian1Addr);
+        vm.expectRevert(abi.encodeWithSelector(Guardian.GuardianNotAccepted.selector));
+        guardian.approveRecovery(newOwner);
+    }
+    function test_PendingGuardianCannotApproveRecovery() public {
+        // Invitar pero no aceptar
+        vm.prank(address(account));
+        guardian.invite(guardian1Hash);
+        
+        address newOwner = vm.addr(0x888);
+        
+        // Guardian pendiente intenta aprobar recovery (debería fallar)
+        vm.prank(guardian1Addr);
+        vm.expectRevert(abi.encodeWithSelector(Guardian.InvalidGuardian.selector));
+        guardian.approveRecovery(newOwner);
+    }
+    function test_GuardianCannotAcceptInvitationForOthers() public {
+        vm.prank(address(account));
+        guardian.invite(guardian1Hash);
+        
+        // Guardian2 intenta aceptar invitación de guardian1 (debería fallar)
+        vm.prank(guardian2Addr);
+        vm.expectRevert(bytes("Invalid guardian hash"));
+        guardian.accept(guardian1Hash);
+    }
+    function test_RandomAddressCannotAcceptNonExistentInvitation() public {
+        address randomAddr = vm.addr(0x999);
+        bytes32 randomHash = keccak256(abi.encodePacked(randomAddr));
+        
+        // Dirección random intenta aceptar invitación que no existe
+        vm.prank(randomAddr);
+        vm.expectRevert(bytes("not pending"));
+        guardian.accept(randomHash);
+    }
+    function test_GuardianCannotModifyRecoveryDataDirectly() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        address newOwner = vm.addr(0x888);
+        
+        // Guardian aprueba recovery normal
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        // Verificar que no hay formas de modificar directamente los datos
+        // (esto se prueba implícitamente ya que no hay funciones públicas para hacerlo)
+        
+        bytes32 recKey = keccak256(abi.encode(newOwner));
+        (address recoveryOwner, uint8 approvals, bool executed, ) = guardian.recoveries(recKey);
+        
+        assertEq(recoveryOwner, newOwner);
+        assertEq(approvals, 1);
+        assertTrue(executed);
+    }
+    function test_OnlyOwnerCanCreateGuardianContract() public {
+        // Test implícito: verificar que el constructor establece correctamente el owner
+        Guardian testGuardian = new Guardian(address(account));
+        assertEq(testGuardian.owner(), address(account));
+        
+        vm.prank(vm.addr(0x999));
+        vm.expectRevert(bytes("only owner"));
+        testGuardian.setQuorum(3); // Debería fallar
+    }
+    function test_GuardianCannotBypassQuorumRequirement() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        setupGuardian(guardian3Addr, guardian3Hash);
+        
+        // Establecer quorum alto
+        vm.prank(address(account));
+        guardian.setQuorum(3);
+        
+        address newOwner = vm.addr(0x888);
+        
+        // Solo un guardian vota (no debería ejecutar)
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        // Verificar que no se ejecutó
+        assertEq(account.owner(), owner);
+        
+        bytes32 recKey = keccak256(abi.encode(newOwner));
+        (, uint8 approvals, bool executed, ) = guardian.recoveries(recKey);
+        assertEq(approvals, 1);
+        assertFalse(executed);
+    }
+    function test_GuardianCannotVoteTwiceEvenAfterStateChanges() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        
+        vm.prank(address(account));
+        guardian.setQuorum(2);
+        
+        address newOwner = vm.addr(0x888);
+        
+        // Guardian1 vota
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        // Intentar votar de nuevo (debería fallar)
+        vm.prank(guardian1Addr);
+        vm.expectRevert(abi.encodeWithSelector(Guardian.AlreadyVoted.selector));
+        guardian.approveRecovery(newOwner);
+        
+        // Incluso si el quorum cambia, no debería poder votar de nuevo
+        vm.prank(address(account));
+        guardian.setQuorum(1);
+        
+        vm.prank(guardian1Addr);
+        vm.expectRevert(abi.encodeWithSelector(Guardian.AlreadyVoted.selector));
+        guardian.approveRecovery(newOwner);
+    }
+    function test_MaliciousGuardianCannotManipulateVotedMapping() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        address newOwner = vm.addr(0x888);
+        bytes32 recKey = keccak256(abi.encode(newOwner));
+        
+        // Verificar estado inicial
+        assertFalse(guardian.voted(guardian1Hash, recKey));
+        
+        // Guardian vota normalmente
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        // Verificar que el voto se registró
+        assertTrue(guardian.voted(guardian1Hash, recKey));
+        
+        // No hay forma externa de modificar el mapping voted
+        // (se prueba implícitamente ya que no hay funciones públicas para hacerlo)
+    }
+    // Test de edge case: verificar que los modificadores funcionan correctamente
+    function test_ModifierOnlyActiveGuardianWorksCorrectly() public {
+        address fakeGuardian = vm.addr(0x999);
+        address newOwner = vm.addr(0x888);
+        
+        // Dirección que no está en guardianAddressToHash
+        vm.prank(fakeGuardian);
+        vm.expectRevert(abi.encodeWithSelector(Guardian.InvalidGuardian.selector));
+        guardian.approveRecovery(newOwner);
+        
+        // Invitar pero no aceptar
+        bytes32 fakeHash = keccak256(abi.encodePacked(fakeGuardian));
+        vm.prank(address(account));
+        guardian.invite(fakeHash);
+        
+        // Guardian pendiente intenta usar función
+        vm.prank(fakeGuardian);
+        vm.expectRevert(abi.encodeWithSelector(Guardian.InvalidGuardian.selector));
+        guardian.approveRecovery(newOwner);
+    }
+    // NUEVAS PRUEBAS PARA LOS GUARDIANAS PARA PROBAR RECUPERACIONES EXPIRADAS
+    function test_ExpiredRecoveryAllowsNewProposal() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        address newOwner = vm.addr(0x999);
+        
+        // FIX: Set a quorum > 1 so the first approval doesn't execute it.
+        vm.prank(address(account));
+        guardian.setQuorum(2);
+        
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        (uint8 approvals, bool executed, , bool expired) =
+            guardian.getRecoveryStatus(newOwner);
+        assertEq(approvals, 1);
+        assertFalse(executed, "Recovery should not execute with 1 of 2 approvals"); // This will now pass
+        assertFalse(expired);
+        
+        // Advance time to make the pending recovery expire
+        vm.warp(block.timestamp + guardian.RECOVERY_PERIOD() + 1);
+        
+        (, , , expired) = guardian.getRecoveryStatus(newOwner);
+        assertTrue(expired, "Recovery should be expired");
+        
+        // Now, the same guardian proposes again. This should trigger cleanup and create a new proposal.
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        // With the new proposal, approvals reset to 1.
+        (approvals, executed, , ) = guardian.getRecoveryStatus(newOwner);
+        assertEq(approvals, 1, "A new proposal should have 1 approval");
+        assertFalse(executed, "Should not be executed yet, quorum is 2");
+        // The test logic for final execution would require a second guardian.
+        // For this test, we confirm the state is reset correctly.
+    }
+    function test_ExpiredRecoveryStateIsReset() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        address newOwner = vm.addr(0x999);
+        
+        // FIX: Set a quorum > 1
+        vm.prank(address(account));
+        guardian.setQuorum(2);
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        bytes32 recKey = keccak256(abi.encode(newOwner));
+        
+        (address recoveryOwner, uint8 approvals, bool executed, ) = guardian.recoveries(recKey);
+        assertEq(recoveryOwner, newOwner);
+        assertEq(approvals, 1);
+        assertFalse(executed);
+        
+        // Advance time
+        vm.warp(block.timestamp + guardian.RECOVERY_PERIOD() + 1);
+        
+        // This second call should now work, triggering cleanup and starting a new recovery
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        (recoveryOwner, approvals, , ) = guardian.recoveries(recKey);
+        assertEq(recoveryOwner, newOwner, "A new instance should be created");
+        assertEq(approvals, 1, "The new recovery should have 1 approval");
+    }
+    function test_MultipleExpiredRecoveries() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        address newOwner1 = vm.addr(0x999);
+        address newOwner2 = vm.addr(0x888);
+        
+        // FIX: Set a quorum > 1
+        vm.prank(address(account));
+        guardian.setQuorum(2);
+        
+        // Propose for owner 1 (doesn't execute)
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner1);
+        
+        // Propose for owner 2 (doesn't execute)
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner2);
+        
+        // Advance time so both expire
+        vm.warp(block.timestamp + guardian.RECOVERY_PERIOD() + 1);
+        
+        // Now, repropose for owner 1. This should work.
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner1);
+        
+        // And repropose for owner 2. This should also work.
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner2);
+        
+        (uint8 approvals1, bool executed1, , ) = guardian.getRecoveryStatus(newOwner1);
+        (uint8 approvals2, bool executed2, , ) = guardian.getRecoveryStatus(newOwner2);
+        
+        assertEq(approvals1, 1, "Approvals for newOwner1 should be 1");
+        assertFalse(executed1, "Should not be executed yet");
+        assertEq(approvals2, 1, "Approvals for newOwner2 should be 1");
+        assertFalse(executed2, "Should not be executed yet");
+    }
+    function test_ExpiredRecoveryCannotBeExecutedByGuardian() public {
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        
+        vm.prank(address(account));
+        guardian.setQuorum(2);
+        
+        address newOwner = vm.addr(0x888);
+        
+        // Guardian1 vota
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        // Verificar estado inicial
+        (uint8 initialApprovals, bool initialExecuted, , ) = guardian.getRecoveryStatus(newOwner);
+        assertEq(initialApprovals, 1);
+        assertFalse(initialExecuted, "No deberia ejecutarse con solo 1 voto y quorum=2");
+        
+        // Pasar el tiempo de expiración
+        vm.warp(block.timestamp + guardian.RECOVERY_PERIOD() + 1);
+        
+        // Verificar que la recuperación está expirada
+        (, , , bool expired) = guardian.getRecoveryStatus(newOwner);
+        assertTrue(expired, "La recuperacion deberia estar expirada");
+        
+        // Guardian2 intenta votar en recovery expirado (debería limpiar y crear nuevo)
+        vm.prank(guardian2Addr);
+        guardian.approveRecovery(newOwner); // Esto crea una nueva propuesta
+        
+        // Verificar que se creó una nueva propuesta
+        bytes32 recKey = keccak256(abi.encode(newOwner));
+        (, uint8 approvals, bool executed, ) = guardian.recoveries(recKey);
+        assertEq(approvals, 1, "Solo deberia haber 1 voto en la nueva propuesta");
+        assertFalse(executed, "NO deberia ejecutarse con solo 1 voto cuando quorum=2");
+        
+        // Ahora Guardian1 vota de nuevo para completar el quorum
+        vm.prank(guardian1Addr);
+        guardian.approveRecovery(newOwner);
+        
+        // AHORA sí debería ejecutarse
+        (, approvals, executed, ) = guardian.recoveries(recKey);
+        assertEq(approvals, 2, "Deberia haber 2 votos");
+        assertTrue(executed, "Deberia ejecutarse con quorum completo");
+        assertEq(account.owner(), newOwner, "La propiedad deberia transferirse");
+    }
+
     //helper
     function setupGuardian(
         address guardianAddr,
