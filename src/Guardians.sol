@@ -102,12 +102,18 @@ contract Guardian {
     function remove(bytes32 guardianHash) external onlyOwner {
         delete guardians[guardianHash];
         totalGuards -= 1;
+
+        if (requiredApprovals > totalGuards) {
+            requiredApprovals = totalGuards;
+            emit QuorumChanged(requiredApprovals);
+        }
+
+        
         emit GuardianRemoved(guardianHash);
     }
 
     function setQuorum(uint8 q) external onlyOwner {
         require(q > 0, "zero");
-        // uint8 totalGuards = uint8(guardianHashes.length);
         require(q <= totalGuards, QuorumExceeded(q, totalGuards));
 
         requiredApprovals = q;
