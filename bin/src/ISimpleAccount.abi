@@ -1,1 +1,0 @@
-[{"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"executeRecovery","outputs":[],"stateMutability":"nonpayable","type":"function"}]
