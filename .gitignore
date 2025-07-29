@@ -2,6 +2,7 @@
 cache/
 out/
 node_modules/
+bin/
 
 # Ignores development broadcast logs
 broadcast/
