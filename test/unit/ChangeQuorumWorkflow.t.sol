@@ -183,6 +183,11 @@ contract ChangeQuorumWorkflowTest is Test {
     }
 
     function test_QuorumChangedEvent() public {
+        // Primero configurar suficientes guardianes
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        setupGuardian(guardian3Addr, guardian3Hash);
+        
         vm.prank(address(account));
         
         // Verificar que se emite el evento correcto
@@ -214,42 +219,34 @@ contract ChangeQuorumWorkflowTest is Test {
         setupGuardian(guardian1Addr, guardian1Hash);
         setupGuardian(guardian2Addr, guardian2Hash);
 
-        // Intentar establecer quorum más alto que guardians disponibles
+        // Intentar establecer quorum más alto que guardians disponibles debería fallar
         vm.prank(address(account));
+        vm.expectRevert(); // Esperamos que falle con QuorumExceeded
         guardian.setQuorum(5); // 5 > 2 guardians disponibles
 
-        // Debería permitirse pero hacer imposible la recuperación
-        assertEq(guardian.requiredApprovals(), 5);
-        
-        address newOwner = vm.addr(0x999);
-        
-        // Ambos guardians votan pero no debería ejecutarse
-        vm.prank(guardian1Addr);
-        guardian.approveRecovery(newOwner);
-        
-        vm.prank(guardian2Addr);
-        guardian.approveRecovery(newOwner);
-        
-        // La recuperación NO debería ejecutarse
-        assertNotEq(account.owner(), newOwner);
-        
-        (uint8 approvals, bool executed,,) = guardian.getRecoveryStatus(newOwner);
-        assertEq(approvals, 2);
-        assertFalse(executed);
+        // El quorum debería seguir siendo 1 (valor inicial)
+        assertEq(guardian.requiredApprovals(), 1);
     }
 
     function test_QuorumChangeToMaxUint8() public {
-        // Probar con el valor máximo de uint8
+        // Configurar suficientes guardianes para test realista
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        setupGuardian(guardian3Addr, guardian3Hash);
+        
+        // Probar con el valor máximo permitido (número de guardianes)
         vm.prank(address(account));
-        guardian.setQuorum(255);
+        guardian.setQuorum(3);
         
-        assertEq(guardian.requiredApprovals(), 255);
+        assertEq(guardian.requiredApprovals(), 3);
         
-        // Verificar que el evento se emite correctamente
+        // Verificar que el evento se emite correctamente para un cambio válido
         vm.prank(address(account));
         vm.expectEmit(true, false, false, true);
-        emit Guardian.QuorumChanged(100);
-        guardian.setQuorum(100);
+        emit Guardian.QuorumChanged(2);
+        guardian.setQuorum(2);
+        
+        assertEq(guardian.requiredApprovals(), 2);
     }
 
     function test_QuorumChangeAffectsOngoingRecovery() public {
@@ -323,15 +320,16 @@ contract ChangeQuorumWorkflowTest is Test {
         vm.prank(address(account));
         guardian.setQuorum(3);
         
-        // Remover un guardian
+        // Remover un guardian - esto debería ajustar automáticamente el quorum
         vm.prank(address(account));
         guardian.remove(guardian3Hash);
         
-        // Ahora solo quedan 2 guardians pero el quorum sigue siendo 3
-        assertEq(guardian.requiredApprovals(), 3);
+        // El contrato ajusta automáticamente el quorum cuando se remueve un guardian
+        // y el quorum actual es mayor que el número de guardianes restantes
+        assertEq(guardian.requiredApprovals(), 2); // Se ajustó de 3 a 2
         assertFalse(guardian.isGuardian(guardian3Hash));
         
-        // Intentar recuperación - debería ser imposible
+        // Ahora la recuperación debería ser posible con 2 votos
         address newOwner = vm.addr(0x999);
         
         vm.prank(guardian1Addr);
@@ -340,12 +338,12 @@ contract ChangeQuorumWorkflowTest is Test {
         vm.prank(guardian2Addr);
         guardian.approveRecovery(newOwner);
         
-        // No debería ejecutarse
-        assertNotEq(account.owner(), newOwner);
+        // Debería ejecutarse ahora
+        assertEq(account.owner(), newOwner);
         
         (uint8 approvals, bool executed,,) = guardian.getRecoveryStatus(newOwner);
         assertEq(approvals, 2);
-        assertFalse(executed);
+        assertTrue(executed);
     }
 
     function test_QuorumChangeWithRemovedGuardianVotes() public {
@@ -437,43 +435,59 @@ contract ChangeQuorumWorkflowTest is Test {
     }
 
     function test_QuorumBoundaryConditions() public {
+        // Configurar algunos guardianes primero
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        setupGuardian(guardian3Addr, guardian3Hash);
+        
         // Test quorum = 1
         vm.prank(address(account));
         guardian.setQuorum(1);
         assertEq(guardian.requiredApprovals(), 1);
         
-        // Test incremento gradual
-        for(uint8 i = 2; i <= 10; i++) {
+        // Test incremento gradual hasta el máximo permitido (número de guardianes)
+        for(uint8 i = 2; i <= 3; i++) {
             vm.prank(address(account));
             guardian.setQuorum(i);
             assertEq(guardian.requiredApprovals(), i);
         }
         
-        // Test valor muy alto
+        // Test que no se puede exceder el número de guardianes
         vm.prank(address(account));
-        guardian.setQuorum(200);
-        assertEq(guardian.requiredApprovals(), 200);
+        vm.expectRevert(); // Debería fallar
+        guardian.setQuorum(4); // 4 > 3 guardianes
+        
+        // Verificar que el quorum sigue siendo 3
+        assertEq(guardian.requiredApprovals(), 3);
     }
 
     function test_QuorumChangeEventSequence() public {
+        // Configurar suficientes guardianes para los tests
+        setupGuardian(guardian1Addr, guardian1Hash);
+        setupGuardian(guardian2Addr, guardian2Hash);
+        setupGuardian(guardian3Addr, guardian3Hash);
+        
         // Verificar múltiples cambios de quorum y sus eventos
         vm.startPrank(address(account));
         
+        // Primer cambio válido
         vm.expectEmit(true, false, false, true);
-        emit Guardian.QuorumChanged(5);
-        guardian.setQuorum(5);
+        emit Guardian.QuorumChanged(3);
+        guardian.setQuorum(3);
         
+        // Segundo cambio válido
         vm.expectEmit(true, false, false, true);
         emit Guardian.QuorumChanged(1);
         guardian.setQuorum(1);
         
+        // Tercer cambio válido
         vm.expectEmit(true, false, false, true);
-        emit Guardian.QuorumChanged(255);
-        guardian.setQuorum(255);
+        emit Guardian.QuorumChanged(2);
+        guardian.setQuorum(2);
         
         vm.stopPrank();
         
-        assertEq(guardian.requiredApprovals(), 255);
+        assertEq(guardian.requiredApprovals(), 2);
     }
 }
 
