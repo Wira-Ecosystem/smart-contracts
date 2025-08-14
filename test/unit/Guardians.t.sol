@@ -3,13 +3,13 @@ pragma solidity ^0.8.24;
 import {Test, console} from "forge-std/Test.sol";
 import {Guardian} from "../../src/Guardians.sol";
 import {SimpleAccount} from "../../src/SimpleAccount.sol";
-import {SimpleAccountFactory} from "../../src/SimpleAccountFactory.sol";
+import {DebtAccountFactory} from "../../src/DebtAccountFactory.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 
 contract GuardianTest is Test {
     IEntryPoint entrypoint =
         IEntryPoint(0x0000000071727De22E5E9d8BAf0edAc6f37da032);
-    SimpleAccountFactory factory;
+    DebtAccountFactory factory;
     SimpleAccount account;
     Guardian guardian;
     address owner;
@@ -23,7 +23,7 @@ contract GuardianTest is Test {
 
     function setUp() public {
         address fcOwner = address(0x173);
-        factory = new SimpleAccountFactory(entrypoint, fcOwner);
+        factory = new DebtAccountFactory(entrypoint, fcOwner);
         //initialize with entrypoint and fake tokenPaymaster
         vm.prank(fcOwner);
         factory.initialize(address(0x123));

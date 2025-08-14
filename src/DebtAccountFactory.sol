@@ -12,9 +12,12 @@ import "./Guardians.sol";
  * The factory's createAccount returns the target account address even if it is already installed.
  * This way, the entryPoint.getSenderAddress() can be called either before or after the account is created.
  */
-contract SimpleAccountFactory {
+contract DebtAccountFactory {
+    IEntryPoint public immutable entryPoint;
+    address public fcOwner;
     SimpleAccount public accountImplementation;
     mapping(address => address) public guardianOf;
+    uint256 public gasToDebt = 0;
 
     event AccountCreated(
         uint256 chainid,
@@ -23,8 +26,18 @@ contract SimpleAccountFactory {
 
     event GuardianCreated(address indexed account, address indexed guardian);
 
-    constructor(IEntryPoint _entryPoint) {
-        accountImplementation = new SimpleAccount(_entryPoint, address(0x0));
+    modifier onlyOwner {
+        require(msg.sender == fcOwner, "Only owner");
+        _;
+    }
+
+    constructor(IEntryPoint _entryPoint, address _owner) {
+        fcOwner = _owner;
+        entryPoint = _entryPoint;
+    }
+
+    function initialize(address _tokenPaymaster) external onlyOwner {
+        accountImplementation = new SimpleAccount(entryPoint, _tokenPaymaster);
         emit AccountCreated(block.chainid, address(accountImplementation));
     }
 
@@ -44,6 +57,8 @@ contract SimpleAccountFactory {
                 address(accountImplementation),
                 abi.encodeCall(SimpleAccount.initialize, (owner, address(this)))
             )));
+        
+        ret.setCreateDebt(gasToDebt);
     }
 
     function createGuardianForAccount(
@@ -98,5 +113,35 @@ contract SimpleAccountFactory {
                     )
                 )
             );
+    }
+
+    function setGasToDebt(uint256 _gasToDebt) external onlyOwner {
+        gasToDebt = _gasToDebt;
+    }
+
+    /**
+     * Add stake for this factory.
+     * This method can also carry eth value to add to the current stake.
+     * @param unstakeDelaySec - The unstake delay for this factory. Can only be increased.
+     */
+    function addStake(uint32 unstakeDelaySec) external payable onlyOwner {
+        entryPoint.addStake{value: msg.value}(unstakeDelaySec);
+    }
+
+    /**
+     * Unlock the stake, in order to withdraw it.
+     * The factory can't serve requests once unlocked, until it calls addStake again
+     */
+    function unlockStake() external onlyOwner {
+        entryPoint.unlockStake();
+    }
+
+    /**
+     * Withdraw the entire factory's stake.
+     * stake must be unlocked first (and then wait for the unstakeDelay to be over)
+     * @param withdrawAddress - The address to send withdrawn value.
+     */
+    function withdrawStake(address payable withdrawAddress) external onlyOwner {
+        entryPoint.withdrawStake(withdrawAddress);
     }
 }

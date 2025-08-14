@@ -18,8 +18,6 @@ contract TokenPaymasterScript is Script {
     mapping(uint256 => address) private gasTokens;
 
     function run() external {
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY"); // Fetch the private key from environment variables
-
         //Wormhole OP sepolia contracts
         cores[11155420] = 0x31377888146f3253211EFEf5c676D41ECe7D58Fe;
         relayers[11155420] = 0x93BAD53DDfB6132b0aC8E37f6029163E63372cEE;
@@ -41,6 +39,7 @@ contract TokenPaymasterScript is Script {
         cores[421614] = 0x6b9C8671cdDC8dEab9c719bB87cBd3e782bA6a35;
         relayers[421614] = 0x7B1bD7a6b4E61c2a123AC6BC2cbfC614437D0470;
         bridges[421614] = 0xC7A204bDBFe983FCD8d8E61D02b475D4073fF97e;
+        gasTokens[421614] = 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d;
 
         require(cores[block.chainid] != address(0), "Chain not supported");
         require(gasTokens[block.chainid] != address(0), "Token not exists on chain");
@@ -60,7 +59,7 @@ contract TokenPaymasterScript is Script {
             priceMaxAge: 86400             // Price valid for 1 day (in seconds)
         });
 
-        vm.startBroadcast(deployerPrivateKey); // Start broadcasting transactions
+        vm.startBroadcast(); // Start broadcasting transactions
 
         //ETH/usd oracle price: 1 ETH = $2000
         MockOracle ethOracle = new MockOracle(200000000000, 8);

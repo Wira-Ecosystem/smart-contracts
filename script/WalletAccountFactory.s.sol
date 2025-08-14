@@ -6,22 +6,17 @@ import "../src/SimpleAccountFactory.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 
 contract WalletAccountFactoryScript is Script {
-    // Address of the EntryPoint contract on Sepolia (v0.7)
-    IEntryPoint constant ENTRYPOINT =
-        IEntryPoint(0x0000000071727De22E5E9d8BAf0edAc6f37da032);
-
     function run() external {
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY"); // Fetch the private key from environment variables
-        address tokenPaymaster = vm.envAddress("TOKEN_PAYMASTER");
-        bytes32 salt = bytes32(uint(287555237));
+        bytes32 salt = bytes32(uint(287555238));
+         // Address of the EntryPoint contract on Sepolia (v0.7)
+        IEntryPoint ENTRYPOINT =
+            IEntryPoint(0x0000000071727De22E5E9d8BAf0edAc6f37da032);
 
-        vm.startBroadcast(deployerPrivateKey); // Start broadcasting transactions
+        vm.startBroadcast(); // Start broadcasting transactions
         
         // Initialize the WalletFactory contract
-        SimpleAccountFactory walletFactory = new SimpleAccountFactory{salt: salt}(ENTRYPOINT, vm.addr(deployerPrivateKey));
-        walletFactory.initialize(tokenPaymaster);
-        console.log(address(walletFactory));
-
+        SimpleAccountFactory walletFactory = new SimpleAccountFactory{salt: salt}(ENTRYPOINT);
         vm.stopBroadcast(); // Stop broadcasting transactions
+        console.log(address(walletFactory));
     }
 }

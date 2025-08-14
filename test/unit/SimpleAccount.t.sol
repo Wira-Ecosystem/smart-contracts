@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test, console} from "forge-std/Test.sol";
 import {SimpleAccount} from "../../src/SimpleAccount.sol";
-import {SimpleAccountFactory} from "../../src/SimpleAccountFactory.sol";
+import {DebtAccountFactory} from "../../src/DebtAccountFactory.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 
 //Test set up for simple account
@@ -11,11 +11,11 @@ contract SimpleAccountTest is Test {
     //Entrypoint needed, same address on all networks
     IEntryPoint entrypoint = IEntryPoint(0x0000000071727De22E5E9d8BAf0edAc6f37da032);
     //Factory to create new SimpleAccounts
-    SimpleAccountFactory factory;
+    DebtAccountFactory factory;
 
     function setUp() public {
         address fcOwner = address(0x173);
-        factory = new SimpleAccountFactory(entrypoint, fcOwner);
+        factory = new DebtAccountFactory(entrypoint, fcOwner);
         //initialize with entrypoint and fake tokenPaymaster
         vm.prank(fcOwner);
         factory.initialize(address(0x789));

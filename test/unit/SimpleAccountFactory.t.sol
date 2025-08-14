@@ -16,9 +16,7 @@ contract SimpleAccountFactoryTest is Test {
         bytes32 salt = bytes32(uint(287555237));
         uint256 accountSalt = 12345;
 
-        SimpleAccountFactory factory = new SimpleAccountFactory{salt: salt}(entrypoint, fcOwner);
-        vm.prank(fcOwner);
-        factory.initialize(address(0x1234));
+        SimpleAccountFactory factory = new SimpleAccountFactory{salt: salt}(entrypoint);
         console.log(address(factory));
         console.log(factory.getAddress(address(0x123), accountSalt));
     }
@@ -27,9 +25,7 @@ contract SimpleAccountFactoryTest is Test {
         bytes32 salt = bytes32(uint(287555237));
         uint256 accountSalt = 12345;
 
-        SimpleAccountFactory factory = new SimpleAccountFactory{salt: salt}(entrypoint, fcOwner);
-        vm.prank(fcOwner);
-        factory.initialize(address(0x1235));
+        SimpleAccountFactory factory = new SimpleAccountFactory{salt: salt}(entrypoint);
         address predicted = factory.getAddress(address(0x123), accountSalt);
 
         SimpleAccount account = factory.createAccount(address(0x123), accountSalt);
