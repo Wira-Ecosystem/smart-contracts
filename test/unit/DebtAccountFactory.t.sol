@@ -2,20 +2,21 @@
 pragma solidity ^0.8.24;
 
 import {Test, console} from "forge-std/Test.sol";
-import {SimpleAccountFactory} from "../../src/SimpleAccountFactory.sol";
+import {DebtAccountFactory} from "../../src/DebtAccountFactory.sol";
 import {SimpleAccount} from "../../src/SimpleAccount.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 
 //Test set up for simple account
-contract SimpleAccountFactoryTest is Test {
+contract DebtAccountFactoryTest is Test {
     //Entrypoint needed, same address on all networks
     IEntryPoint entrypoint = IEntryPoint(0x0000000071727De22E5E9d8BAf0edAc6f37da032);
     address fcOwner = address(0x173);
-    SimpleAccountFactory factory;
+    DebtAccountFactory factory;
 
     function setUp() public {
         bytes32 salt = bytes32(uint(287555237));
-        factory = new SimpleAccountFactory{salt: salt}(entrypoint, fcOwner);
+
+        factory = new DebtAccountFactory{salt: salt}(entrypoint, fcOwner);
         vm.prank(fcOwner);
         factory.initialize(address(0x1234));
     }
@@ -24,7 +25,7 @@ contract SimpleAccountFactoryTest is Test {
         bytes32 salt = bytes32(uint(287555238)); // Different salt
         uint256 accountSalt = 12345;
 
-        SimpleAccountFactory tempFactory = new SimpleAccountFactory{salt: salt}(entrypoint, fcOwner);
+        DebtAccountFactory tempFactory = new DebtAccountFactory{salt: salt}(entrypoint, fcOwner);
         vm.prank(fcOwner);
         tempFactory.initialize(address(0x1234));
         console.log(address(tempFactory));
@@ -35,7 +36,7 @@ contract SimpleAccountFactoryTest is Test {
         bytes32 salt = bytes32(uint(287555239)); // Different salt
         uint256 accountSalt = 12345;
 
-        SimpleAccountFactory tempFactory = new SimpleAccountFactory{salt: salt}(entrypoint, fcOwner);
+        DebtAccountFactory tempFactory = new DebtAccountFactory{salt: salt}(entrypoint, fcOwner);
         vm.prank(fcOwner);
         tempFactory.initialize(address(0x1235));
         address predicted = tempFactory.getAddress(address(0x123), accountSalt);
@@ -49,7 +50,7 @@ contract SimpleAccountFactoryTest is Test {
 
     // 1) Test for unauthorized access control on critical functions
     function test_SecurityCritical_UnauthorizedInitialize() public {
-        SimpleAccountFactory tempFactory = new SimpleAccountFactory(entrypoint, fcOwner);
+        DebtAccountFactory tempFactory = new DebtAccountFactory(entrypoint, fcOwner);
         
         vm.startPrank(address(0x999));
         vm.expectRevert();

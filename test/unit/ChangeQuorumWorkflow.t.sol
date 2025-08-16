@@ -23,10 +23,7 @@ contract ChangeQuorumWorkflowTest is Test {
     bytes32 guardian3Hash;
 
     function setUp() public {
-        address fcOwner = address(0x173);
-        factory = new SimpleAccountFactory(entrypoint, fcOwner);
-        vm.prank(fcOwner);
-        factory.initialize(address(0x789));
+        factory = new SimpleAccountFactory(entrypoint);
         
         owner = address(0x123);
         account = factory.createAccount(owner, 123456);

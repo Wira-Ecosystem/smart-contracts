@@ -36,10 +36,7 @@ contract TokenPaymasterScript is Script {
     // Mapeo para las direcciones de los tokens de gas
 
     function run() external {
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        // Obtiene la clave privada del entorno
-
-        // Wormhole OP sepolia contracts
+        //Wormhole OP sepolia contracts
         cores[11155420] = 0x31377888146f3253211EFEf5c676D41ECe7D58Fe;
         relayers[11155420] = 0x93BAD53DDfB6132b0aC8E37f6029163E63372cEE;
         bridges[11155420] = 0x99737Ec4B815d816c49A385943baf0380e75c0Ac;
@@ -63,7 +60,7 @@ contract TokenPaymasterScript is Script {
         cores[421614] = 0x6b9C8671cdDC8dEab9c719bB87cBd3e782bA6a35;
         relayers[421614] = 0x7B1bD7a6b4E61c2a123AC6BC2cbfC614437D0470;
         bridges[421614] = 0xC7A204bDBFe983FCD8d8E61D02b475D4073fF97e;
-        // Configuración para la red Arbitrum Sepolia
+        gasTokens[421614] = 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d;
 
         require(cores[block.chainid] != address(0), "Chain not supported");
         // Verifica que la cadena esté soportada
@@ -94,8 +91,7 @@ contract TokenPaymasterScript is Script {
             // Precio válido por 1 día
         });
 
-        vm.startBroadcast(deployerPrivateKey);
-        // Inicia la transmisión de transacciones
+        vm.startBroadcast(); // Start broadcasting transactions
 
         MockOracle ethOracle = new MockOracle(200000000000, 8);
         // Oracle simulado para ETH/USD

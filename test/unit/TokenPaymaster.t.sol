@@ -9,14 +9,14 @@ import "../../src/TokenPaymaster.sol";
 import {MockOracle} from "../../src/utils/MockOracle.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-import {SimpleAccountFactory} from "../../src/SimpleAccountFactory.sol";
+import {DebtAccountFactory} from "../../src/DebtAccountFactory.sol";
 
 contract TokenPaymasterTest is Test {
     using stdStorage for StdStorage;
 
     IEntryPoint public immutable entrypoint = IEntryPoint(0x0000000071727De22E5E9d8BAf0edAc6f37da032);
     address fcOwner = address(0x173);
-    SimpleAccountFactory factory = new SimpleAccountFactory(entrypoint, fcOwner);
+    DebtAccountFactory factory = new DebtAccountFactory(entrypoint, fcOwner);
 
     PackedUserOperation public testUserOp = PackedUserOperation({
         sender: address(0x169),
