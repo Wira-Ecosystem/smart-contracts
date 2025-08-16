@@ -2,6 +2,7 @@
 cache/
 out/
 node_modules/
+bin/
 
 # Ignores development broadcast logs
 broadcast/
@@ -15,3 +16,20 @@ docs/
 #VS code settings
 .vscode/
 .wake/
+
+# Excluir archivos específicos
+CLEANUP_TESTS_ANALYSIS.md
+PULL_REQUEST_SUMMARY.md
+SECURITY_FIXES_SUMMARY.md
+SECURITY_TESTS_REPORT.md
+TEST_FIXES_ANALYSIS.md
+TESTS_REORGANIZATION_REPORT.md
+
+# Excluir cualquier archivo en la carpeta broadcast
+broadcast/
+
+# Excluir cualquier archivo en la carpeta cache
+cache/
+
+# Excluir cualquier archivo en la carpeta test-failures
+test-failures/

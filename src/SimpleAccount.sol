@@ -25,6 +25,7 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
     address public owner;
     IEntryPoint private immutable _entryPoint;
     address public guardian;
+    address public phoneGuardian;    
     address public factory;
     address public immutable tokenPaymaster;
 
@@ -40,6 +41,7 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
     event SimpleAccountInitialized(IEntryPoint indexed entryPoint, address indexed owner);
     event OwnerRecovered(address indexed newOwner);
     event StreamRegistered(bytes32 indexed idHash, string streamId);
+    event PhoneGuardianSet(address indexed phoneGuardian);
 
     modifier onlyOwner() {
         _onlyOwner();
@@ -55,6 +57,14 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
         require(msg.sender == address(guardian), "Only guardian contract can call");
         _;
     }
+    modifier onlyRecovery() {
+        require(
+            msg.sender == guardian || msg.sender == phoneGuardian,
+            "Only recovery"
+        );
+        _;
+    }
+    
 
     function registerStream(
         bytes32 idHash,
@@ -69,6 +79,12 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
         return _streamOf[idHash];
     }
 
+    function setPhoneGuardian(address _guardian) external onlyOwner {
+        require(_guardian != address(0), "zero addr");
+        phoneGuardian = _guardian;
+        emit PhoneGuardianSet(_guardian);
+    }
+
      function setGuardian(address _guardian) external {
         require(_guardian != address(0), "Guardian cannot be zero address");
         guardian = _guardian;
@@ -78,12 +94,21 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
         return guardian;
     }
 
-    function executeRecovery(address newOwner) external {
-        if (guardian == address(0)) revert GuardianNotConfigurado();
- 
-        require(msg.sender == guardian, "Only guardian can recover");
-        require(newOwner != address(0), "New owner cannot be zero");
 
+    // function executeRecovery(address newOwner) external {
+    //     if (guardian == address(0)) revert GuardianNotConfigurado();
+ 
+    //     require(msg.sender == guardian, "Only guardian can recover");
+    //     require(newOwner != address(0), "New owner cannot be zero");
+
+    //     owner = newOwner;
+    //     emit OwnerRecovered(newOwner);
+    // }
+
+    function executeRecovery(address newOwner) external onlyRecovery {
+        require(newOwner != address(0), "New owner cannot be zero");
+        // si quieres mantener la validación de "no configurado", valida que al menos uno esté seteado:
+        require(guardian != address(0) || phoneGuardian != address(0), "No recovery configured");
         owner = newOwner;
         emit OwnerRecovered(newOwner);
     }
