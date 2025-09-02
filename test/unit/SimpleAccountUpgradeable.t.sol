@@ -8,7 +8,7 @@ import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "@account-abstraction/interfaces/IEntryPoint.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {SimpleAccountV2} from "../mocks/SimpleAccountV2.sol";
+import {SimpleAccountV2} from "../../src/SimpleAccountV2.sol";
 
 //Test for upgrade funcionalities of simple account
 contract SimpleAccountUpgradeableTest is Test {
@@ -64,13 +64,6 @@ contract SimpleAccountUpgradeableTest is Test {
             0,
             abi.encodeWithSelector(acc.upgradeToAndCall.selector, address(upgradedAccount), "")
         );
-    }
-
-    function test_UpgradeAccount() public {
-        SimpleAccountV2 accUp = SimpleAccountV2(payable(address(acc)));
-
-        accUp.setTestVariable(3464);
-        assertEq(accUp.testVariable(), 3464);
     }
 
     // Signature Validation Tests ====================================================

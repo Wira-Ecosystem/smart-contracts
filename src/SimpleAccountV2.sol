@@ -11,18 +11,20 @@ import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import "@account-abstraction/core/BaseAccount.sol";
 import "@account-abstraction/core/Helpers.sol";
-import "../../src/TokenCallbackHandler.sol";
+import "./TokenCallbackHandler.sol";
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "../../src/Guardians.sol";
+import "./Guardians.sol";
 
-
-/// @custom:oz-upgrades-from src/SimpleAccount.sol:SimpleAccount
+/**
+ * SimpleAccount V2
+ * - Added OCR as recovery method
+ */
 contract SimpleAccountV2 is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, Initializable {
     address public owner;
     IEntryPoint private immutable _entryPoint;
     address public guardian;
-    address public phoneGuardian;    
+    address public phoneGuardian; 
     address public factory;
     address public immutable tokenPaymaster;
 
@@ -34,13 +36,13 @@ contract SimpleAccountV2 is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, 
     bool public immutable isThisASimpleAccountContract = true;
     bool public letCollectOnDeliver;
     uint256 public createDebt;
+    address public idGuardian;
 
     event SimpleAccountInitialized(IEntryPoint indexed entryPoint, address indexed owner);
     event OwnerRecovered(address indexed newOwner);
     event StreamRegistered(bytes32 indexed idHash, string streamId);
     event PhoneGuardianSet(address indexed phoneGuardian);
-
-    uint256 public testVariable;
+    event IdGuardianSet(address indexed idGuardian);
 
     modifier onlyOwner() {
         _onlyOwner();
@@ -58,7 +60,7 @@ contract SimpleAccountV2 is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, 
     }
     modifier onlyRecovery() {
         require(
-            msg.sender == guardian || msg.sender == phoneGuardian,
+            msg.sender == guardian || msg.sender == phoneGuardian || msg.sender == idGuardian,
             "Only recovery"
         );
         _;
@@ -84,7 +86,13 @@ contract SimpleAccountV2 is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, 
         emit PhoneGuardianSet(_guardian);
     }
 
-     function setGuardian(address _guardian) external {
+    function setIdGuardian(address _guardian) external onlyOwner {
+        require(_guardian != address(0), "zero addr");
+        idGuardian = _guardian;
+        emit IdGuardianSet(_guardian);
+    }
+
+    function setGuardian(address _guardian) external {
         require(_guardian != address(0), "Guardian cannot be zero address");
         guardian = _guardian;
     }
@@ -95,8 +103,7 @@ contract SimpleAccountV2 is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, 
 
     function executeRecovery(address newOwner) external onlyRecovery {
         require(newOwner != address(0), "New owner cannot be zero");
-        // si quieres mantener la validación de "no configurado", valida que al menos uno esté seteado:
-        require(guardian != address(0) || phoneGuardian != address(0), "No recovery configured");
+        require(guardian != address(0) || phoneGuardian != address(0) || idGuardian != address(0), "No recovery configured");
         owner = newOwner;
         emit OwnerRecovered(newOwner);
     }
@@ -230,9 +237,5 @@ contract SimpleAccountV2 is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, 
     /// @notice check create debt to paid (only paymaster or factory)
     function setCreateDebt(uint256 debt) external onlyFactoryOrPaymaster {
         createDebt = debt;
-    }
-
-    function setTestVariable(uint256 variable) external {
-      testVariable = variable;
     }
 }
