@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import "../../src/SimpleAccount.sol";
-import "../mocks/SimpleAccountV2.sol";
+import "../../src/SimpleAccountV2.sol";
 import "@account-abstraction/core/EntryPoint.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
@@ -69,11 +69,6 @@ contract SimpleAccountV2Test is Test {
         assertEq(proxyV2.owner(), owner);
         assertEq(proxyV2.factory(), factory);
         assertTrue(proxyV2.letCollectOnDeliver());
-        
-        // Test new V2 functionality
-        vm.prank(owner);
-        proxyV2.setTestVariable(42);
-        assertEq(proxyV2.testVariable(), 42);
     }
 
     function test_UpgradeOnlyOwner() public {
@@ -102,19 +97,69 @@ contract SimpleAccountV2Test is Test {
     }
 
     function test_NewPhoneGuardianFeature() public {
+        // Set guardian in V1
+        vm.prank(owner);
+        proxy.setPhoneGuardian(address(0xDEAD));
+
         // Upgrade to V2
         vm.prank(owner);
         proxy.upgradeToAndCall(address(implementationV2), "");
         SimpleAccountV2 proxyV2 = SimpleAccountV2(payable(address(proxy)));
         
-        // Test new phone guardian functionality
-        vm.prank(owner);
-        proxyV2.setPhoneGuardian(address(0xCAFE));
-        assertEq(proxyV2.phoneGuardian(), address(0xCAFE));
+        // Verify guardian state and functionality is preserved
+        assertEq(proxyV2.phoneGuardian(), address(0xDEAD));
         
         // Test recovery with phone guardian
-        vm.prank(address(0xCAFE));
+        vm.prank(address(0xDEAD));
         proxyV2.executeRecovery(address(0xBEEF));
         assertEq(proxyV2.owner(), address(0xBEEF));
+    }
+
+    function test_NewIdGuardianFeature() public {
+        vm.startPrank(owner);
+        proxy.setGuardian(address(0x246));
+        proxy.setPhoneGuardian(address(0x802));
+
+        // Upgrade to V2
+        proxy.upgradeToAndCall(address(implementationV2), "");
+        SimpleAccountV2 proxyV2 = SimpleAccountV2(payable(address(proxy)));
+
+        //check state preserves
+        assertEq(proxyV2.guardian(), address(0x246));
+        assertEq(proxyV2.phoneGuardian(), address(0x802));
+
+        // Set guardian
+        proxyV2.setIdGuardian(address(0xDEAD));
+        vm.stopPrank();
+        
+        // Test recovery with id guardian
+        vm.prank(address(0xDEAD));
+        proxyV2.executeRecovery(address(0xBEEF));
+        assertEq(proxyV2.owner(), address(0xBEEF));
+    }
+
+    function test_idGuardian_notOwner() public {
+        // Upgrade to V2
+        vm.prank(owner);
+        proxy.upgradeToAndCall(address(implementationV2), "");
+        SimpleAccountV2 proxyV2 = SimpleAccountV2(payable(address(proxy)));
+
+        address attacker = address(0x1617);
+        // Set guardian
+        vm.expectRevert(bytes("only owner"));
+        vm.prank(attacker);
+        proxyV2.setIdGuardian(address(0xDEAD));
+    }
+
+    function test_idGuardian_zeroAddress() public {
+        // Upgrade to V2
+        vm.prank(owner);
+        proxy.upgradeToAndCall(address(implementationV2), "");
+        SimpleAccountV2 proxyV2 = SimpleAccountV2(payable(address(proxy)));
+
+        // Set guardian
+        vm.expectRevert(bytes("zero addr"));
+        vm.prank(owner);
+        proxyV2.setIdGuardian(address(0x0));
     }
 }

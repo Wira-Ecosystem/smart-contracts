@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/utils/Create2.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./SimpleAccount.sol";
 import "./Guardians.sol";
@@ -12,7 +13,7 @@ import "./Guardians.sol";
  * The factory's createAccount returns the target account address even if it is already installed.
  * This way, the entryPoint.getSenderAddress() can be called either before or after the account is created.
  */
-contract SimpleAccountFactory {
+contract SimpleAccountFactory is Ownable {
     SimpleAccount public accountImplementation;
     mapping(address => address) public guardianOf;
 
@@ -23,7 +24,7 @@ contract SimpleAccountFactory {
 
     event GuardianCreated(address indexed account, address indexed guardian);
 
-    constructor(IEntryPoint _entryPoint) {
+    constructor(IEntryPoint _entryPoint, address initOwner) Ownable(initOwner) {
         accountImplementation = new SimpleAccount(_entryPoint, address(0x0));
         emit AccountCreated(block.chainid, address(accountImplementation));
     }
@@ -99,5 +100,9 @@ contract SimpleAccountFactory {
                     )
                 )
             );
+    }
+
+    function setAccountImplementation(address payable newImpl) external onlyOwner {
+        accountImplementation = SimpleAccount(newImpl);
     }
 }
