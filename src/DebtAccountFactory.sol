@@ -12,7 +12,7 @@ import "./Guardians.sol";
  * The factory's createAccount returns the target account address even if it is already installed.
  * This way, the entryPoint.getSenderAddress() can be called either before or after the account is created.
  */
-contract DebtAccountFactory {
+contract DebtAccountFactory is Initializable {
     IEntryPoint public immutable entryPoint;
     address public fcOwner;
     SimpleAccount public accountImplementation;
@@ -31,12 +31,17 @@ contract DebtAccountFactory {
         _;
     }
 
+    modifier nonZeroAddress(address addr) {
+        require(addr != address(0), "Zero address no allowed");
+        _;
+    }
+
     constructor(IEntryPoint _entryPoint, address _owner) {
         fcOwner = _owner;
         entryPoint = _entryPoint;
     }
 
-    function initialize(address _tokenPaymaster) external onlyOwner {
+    function initialize(address _tokenPaymaster) external onlyOwner initializer {
         accountImplementation = new SimpleAccount(entryPoint, _tokenPaymaster);
         emit AccountCreated(block.chainid, address(accountImplementation));
     }
@@ -47,7 +52,7 @@ contract DebtAccountFactory {
      * Note that during UserOperation execution, this method is called only if the account is not deployed.
      * This method returns an existing account address so that entryPoint.getSenderAddress() would work even after account creation
      */
-    function createAccount(address owner,uint256 salt) public returns (SimpleAccount ret) {
+    function createAccount(address owner,uint256 salt) public nonZeroAddress(owner) returns (SimpleAccount ret) {
         address addr = getAddress(owner, salt);
         uint256 codeSize = addr.code.length;
         if (codeSize > 0) {
@@ -87,7 +92,7 @@ contract DebtAccountFactory {
     /**
      * calculate the counterfactual address of this account as it would be returned by createAccount()
      */
-    function getAddress(address owner,uint256 salt) public view returns (address) {
+    function getAddress(address owner,uint256 salt) public view nonZeroAddress(owner) returns (address) {
         return Create2.computeAddress(bytes32(salt), keccak256(abi.encodePacked(
                 type(ERC1967Proxy).creationCode,
                 abi.encode(

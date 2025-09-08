@@ -24,6 +24,11 @@ contract SimpleAccountFactory is Ownable {
 
     event GuardianCreated(address indexed account, address indexed guardian);
 
+    modifier nonZeroAddress(address addr) {
+        require(addr != address(0), "Zero address no allowed");
+        _;
+    }
+
     constructor(IEntryPoint _entryPoint, address initOwner) Ownable(initOwner) {
         accountImplementation = new SimpleAccount(_entryPoint, address(0x0));
         emit AccountCreated(block.chainid, address(accountImplementation));
@@ -35,7 +40,7 @@ contract SimpleAccountFactory is Ownable {
      * Note that during UserOperation execution, this method is called only if the account is not deployed.
      * This method returns an existing account address so that entryPoint.getSenderAddress() would work even after account creation
      */
-    function createAccount(address owner,uint256 salt) public returns (SimpleAccount ret) {
+    function createAccount(address owner,uint256 salt) public nonZeroAddress(owner) returns (SimpleAccount ret) {
         require(owner != address(0), "Owner cannot be zero address");
         address addr = getAddress(owner, salt);
         uint256 codeSize = addr.code.length;
@@ -51,8 +56,7 @@ contract SimpleAccountFactory is Ownable {
     function createGuardianForAccount(
         address account,
         uint256 salt
-    ) external returns (address) {
-        require(account != address(0), "Invalid account");
+    ) external nonZeroAddress(account) returns (address) {
         require(guardianOf[account] == address(0), "Guardian already exists");
 
         require(
@@ -74,7 +78,7 @@ contract SimpleAccountFactory is Ownable {
     /**
      * calculate the counterfactual address of this account as it would be returned by createAccount()
      */
-    function getAddress(address owner,uint256 salt) public view returns (address) {
+    function getAddress(address owner,uint256 salt) public view nonZeroAddress(owner) returns (address) {
         return Create2.computeAddress(bytes32(salt), keccak256(abi.encodePacked(
                 type(ERC1967Proxy).creationCode,
                 abi.encode(
@@ -88,7 +92,7 @@ contract SimpleAccountFactory is Ownable {
     function getGuardianAddress(
         address account,
         uint256 salt
-    ) public view returns (address) {
+    ) public view nonZeroAddress(account) returns (address) {
         bytes32 guardianSalt = keccak256(abi.encodePacked(account, salt));
         return
             Create2.computeAddress(
