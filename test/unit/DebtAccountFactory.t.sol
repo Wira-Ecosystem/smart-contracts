@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test, console} from "forge-std/Test.sol";
 import {DebtAccountFactory} from "../../src/DebtAccountFactory.sol";
-import {SimpleAccount} from "../../src/SimpleAccount.sol";
+import {SimpleAccountV2} from "../../src/SimpleAccountV2.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 
 //Test set up for simple account
@@ -41,7 +41,7 @@ contract DebtAccountFactoryTest is Test {
         tempFactory.initialize(address(0x1235));
         address predicted = tempFactory.getAddress(address(0x123), accountSalt);
 
-        SimpleAccount account = tempFactory.createAccount(address(0x123), accountSalt);
+        SimpleAccountV2 account = tempFactory.createAccount(address(0x123), accountSalt);
         
         assertEq(predicted, address(account));
     }
@@ -75,10 +75,10 @@ contract DebtAccountFactoryTest is Test {
     // 4) Test for salt collision prevention
     function test_SecurityCritical_SaltCollisionPrevention() public {
         // Create first account
-        SimpleAccount account1 = factory.createAccount(address(0x123), 12345);
+        SimpleAccountV2 account1 = factory.createAccount(address(0x123), 12345);
         
         // Create second account with different owner but same salt
-        SimpleAccount account2 = factory.createAccount(address(0x456), 12345);
+        SimpleAccountV2 account2 = factory.createAccount(address(0x456), 12345);
         
         // Addresses should be different due to different owners
         assertTrue(address(account1) != address(account2), "Salt collision detected - critical vulnerability");
@@ -87,7 +87,7 @@ contract DebtAccountFactoryTest is Test {
     // 5) Test for address prediction security
     function test_SecurityCritical_AddressPredictionSecurity() public {
         address predicted = factory.getAddress(address(0x123), 54321);
-        SimpleAccount actual = factory.createAccount(address(0x123), 54321);
+        SimpleAccountV2 actual = factory.createAccount(address(0x123), 54321);
         
         assertEq(predicted, address(actual), "Address prediction manipulation detected");
         assertEq(actual.owner(), address(0x123), "Account owner mismatch - security issue");
@@ -98,11 +98,11 @@ contract DebtAccountFactoryTest is Test {
         address predictedAddr = factory.getAddress(address(0x123), 98765);
         
         // Simulate front-runner creating account for different owner
-        SimpleAccount frontRunAccount = factory.createAccount(address(0x999), 98765);
+        SimpleAccountV2 frontRunAccount = factory.createAccount(address(0x999), 98765);
         assertTrue(address(frontRunAccount) != predictedAddr, "Front-running protection failed");
         
         // Original user can still create their account
-        SimpleAccount originalAccount = factory.createAccount(address(0x123), 98765);
+        SimpleAccountV2 originalAccount = factory.createAccount(address(0x123), 98765);
         assertEq(address(originalAccount), predictedAddr, "Original account creation failed");
     }
 
@@ -159,7 +159,7 @@ contract DebtAccountFactoryTest is Test {
     function test_SecurityCritical_GuardianDoubleCreation() public {
         address owner = address(0x123);
         // Create an account first
-        SimpleAccount account = factory.createAccount(owner, 12345);
+        SimpleAccountV2 account = factory.createAccount(owner, 12345);
         
         // Set a guardian directly (as the owner)
         vm.startPrank(owner);
@@ -178,7 +178,7 @@ contract DebtAccountFactoryTest is Test {
     // ===================== POSITIVE SECURITY TESTS =====================
 
     function test_SecurityPass_EventEmission() public {
-        SimpleAccount account = factory.createAccount(address(0x123), 98765);
+        SimpleAccountV2 account = factory.createAccount(address(0x123), 98765);
         
         assertTrue(address(account) != address(0), "Account should be created successfully");
         assertEq(account.owner(), address(0x123), "Account should have correct owner");
@@ -187,7 +187,7 @@ contract DebtAccountFactoryTest is Test {
     function test_SecurityPass_GuardianCreation() public {
         address owner = address(0x123);
         // Create an account first
-        SimpleAccount account = factory.createAccount(owner, 12345);
+        SimpleAccountV2 account = factory.createAccount(owner, 12345);
         
         // Set guardian directly (as the owner)
         vm.startPrank(owner);
@@ -203,14 +203,14 @@ contract DebtAccountFactoryTest is Test {
     }
 
     function test_SecurityPass_SameOwnerSameSalt() public {
-        SimpleAccount account1 = factory.createAccount(address(0x123), 12345);
-        SimpleAccount account2 = factory.createAccount(address(0x123), 12345);
+        SimpleAccountV2 account1 = factory.createAccount(address(0x123), 12345);
+        SimpleAccountV2 account2 = factory.createAccount(address(0x123), 12345);
         
         assertEq(address(account1), address(account2), "Same parameters should return same account");
     }
 
     function test_SecurityPass_LargeSaltValues() public {
-        SimpleAccount account = factory.createAccount(address(0x123), type(uint256).max);
+        SimpleAccountV2 account = factory.createAccount(address(0x123), type(uint256).max);
         
         assertTrue(address(account) != address(0), "Should handle large salt values");
     }
@@ -245,12 +245,12 @@ contract DebtAccountFactoryTest is Test {
         uint256 salt = 789;
 
         // First call - deploys the account
-        SimpleAccount account1 = factory.createAccount(owner, salt);
+        SimpleAccountV2 account1 = factory.createAccount(owner, salt);
         address addr1 = address(account1);
         uint256 codeSize1 = addr1.code.length;
         
         // Second call - should return the same instance
-        SimpleAccount account2 = factory.createAccount(owner, salt);
+        SimpleAccountV2 account2 = factory.createAccount(owner, salt);
         address addr2 = address(account2);
         uint256 codeSize2 = addr2.code.length;
         
@@ -268,7 +268,7 @@ contract DebtAccountFactoryTest is Test {
         address expectedAddress = factory.getAddress(owner, salt);
         
         // Deploy account
-        SimpleAccount account = factory.createAccount(owner, salt);
+        SimpleAccountV2 account = factory.createAccount(owner, salt);
         
         // Verify determinism
         assertEq(address(account), expectedAddress, "Deployed address must match counterfactual address");
@@ -284,7 +284,7 @@ contract DebtAccountFactoryTest is Test {
         factory.setGasToDebt(gasDebtAmount);
         
         // Create new account
-        SimpleAccount account = factory.createAccount(owner, salt);
+        SimpleAccountV2 account = factory.createAccount(owner, salt);
         
         // Verify debt propagation
         assertEq(account.createDebt(), gasDebtAmount, "createDebt should match gasToDebt");

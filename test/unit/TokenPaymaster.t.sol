@@ -6,6 +6,7 @@ import {stdStorage, StdStorage} from "forge-std/Test.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "@account-abstraction/interfaces/PackedUserOperation.sol";
 import "../../src/TokenPaymaster.sol";
+import {SimpleAccountV2} from "../../src/SimpleAccountV2.sol";
 import {MockOracle} from "../../src/utils/MockOracle.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
@@ -390,7 +391,7 @@ contract TokenPaymasterTest is Test {
         gasToken.approve(address(p), 5e6);
 
         modifiedUserOp.callData = abi.encodeWithSelector(
-            SimpleAccount.execute.selector,
+            SimpleAccountV2.execute.selector,
             address(p),
             0,
             abi.encodeWithSelector(
@@ -484,7 +485,7 @@ contract TokenPaymasterTest is Test {
         uint actualGasCost = 0.0001 ether;
         uint actualUserOpFeePerGas = 1_000;
         
-        SimpleAccount account = factory.createAccount(accountOwner, 123456);
+        SimpleAccountV2 account = factory.createAccount(accountOwner, 123456);
         assertEq(account.createDebt(), 10001);
         //fund account with 10 gas tokens
         stdstore.target(address(gasToken))
@@ -528,7 +529,7 @@ contract TokenPaymasterTest is Test {
         factory.initialize(address(p));
 
         vm.startPrank(address(0x456));
-        SimpleAccount acc = factory.createAccount(address(0x456), 123456);
+        SimpleAccountV2 acc = factory.createAccount(address(0x456), 123456);
         //check receiver account will reject payment
         assertEq(acc.letCollectOnDeliver(), false);
         vm.stopPrank();
@@ -550,7 +551,7 @@ contract TokenPaymasterTest is Test {
         factory.initialize(address(p));
 
         vm.startPrank(address(0x456));
-        SimpleAccount acc = factory.createAccount(address(0x456), 123456);
+        SimpleAccountV2 acc = factory.createAccount(address(0x456), 123456);
         acc.setCollectOnDeliver(true);
         assertEq(acc.letCollectOnDeliver(), true);
         vm.stopPrank();
@@ -572,7 +573,7 @@ contract TokenPaymasterTest is Test {
         factory.initialize(address(p));
 
         vm.startPrank(address(0x456));
-        SimpleAccount acc = factory.createAccount(address(0x456), 123456);
+        SimpleAccountV2 acc = factory.createAccount(address(0x456), 123456);
         acc.setCollectOnDeliver(true);
         assertEq(acc.letCollectOnDeliver(), true);
         vm.stopPrank();
@@ -606,7 +607,7 @@ contract TokenPaymasterTest is Test {
 
         //create receiver wallet
         vm.startPrank(address(0x456));
-        SimpleAccount acc = factory.createAccount(address(0x456), 123456);
+        SimpleAccountV2 acc = factory.createAccount(address(0x456), 123456);
         acc.setCollectOnDeliver(true);
         assertEq(acc.letCollectOnDeliver(), true);
         vm.stopPrank();

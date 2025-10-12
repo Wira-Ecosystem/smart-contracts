@@ -15,7 +15,7 @@ contract WalletAccountFactoryScript is Script {
         vm.startBroadcast(); // Start broadcasting transactions
         
         // Initialize the WalletFactory contract
-        SimpleAccountFactory walletFactory = new SimpleAccountFactory{salt: salt}(ENTRYPOINT, msg.sender);
+        SimpleAccountFactory walletFactory = new SimpleAccountFactory{salt: salt}(ENTRYPOINT);
         vm.stopBroadcast(); // Stop broadcasting transactions
         console.log(address(walletFactory));
     }

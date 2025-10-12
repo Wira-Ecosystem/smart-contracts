@@ -13,8 +13,6 @@ import "@account-abstraction/core/BaseAccount.sol";
 import "@account-abstraction/core/Helpers.sol";
 import "./TokenCallbackHandler.sol";
 
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "./Guardians.sol";
 /**
   * minimal account.
   *  this is sample minimal account.
@@ -24,47 +22,19 @@ import "./Guardians.sol";
 contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, Initializable {
     address public owner;
     IEntryPoint private immutable _entryPoint;
-    address public guardian;
-    address public phoneGuardian;    
-    address public factory;
-    address public immutable tokenPaymaster;
 
-    using SafeERC20 for IERC20;
     mapping(bytes32 => string) private _streamOf;
-
-    error GuardianNotConfigurado();
 
     bool public immutable isThisASimpleAccountContract = true;
     bool public letCollectOnDeliver;
-    uint256 public createDebt;
 
     event SimpleAccountInitialized(IEntryPoint indexed entryPoint, address indexed owner);
-    event OwnerRecovered(address indexed newOwner);
     event StreamRegistered(bytes32 indexed idHash, string streamId);
-    event PhoneGuardianSet(address indexed phoneGuardian);
 
     modifier onlyOwner() {
         _onlyOwner();
         _;
     }
-
-    modifier onlyFactoryOrPaymaster() {
-        require(msg.sender == tokenPaymaster || msg.sender == factory, "Only factory or paymaster");
-        _;
-    }
-
-    modifier onlyGuardianContract() {
-        require(msg.sender == address(guardian), "Only guardian contract can call");
-        _;
-    }
-    modifier onlyRecovery() {
-        require(
-            msg.sender == guardian || msg.sender == phoneGuardian,
-            "Only recovery"
-        );
-        _;
-    }
-    
 
     function registerStream(
         bytes32 idHash,
@@ -79,48 +49,13 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
         return _streamOf[idHash];
     }
 
-    function setPhoneGuardian(address _guardian) external onlyOwner {
-        require(_guardian != address(0), "zero addr");
-        phoneGuardian = _guardian;
-        emit PhoneGuardianSet(_guardian);
-    }
-
-     function setGuardian(address _guardian) external {
-        require(_guardian != address(0), "Guardian cannot be zero address");
-        guardian = _guardian;
-    }
-
-    function getGuardian() external view returns (address) {
-        return guardian;
-    }
-
-
-    // function executeRecovery(address newOwner) external {
-    //     if (guardian == address(0)) revert GuardianNotConfigurado();
- 
-    //     require(msg.sender == guardian, "Only guardian can recover");
-    //     require(newOwner != address(0), "New owner cannot be zero");
-
-    //     owner = newOwner;
-    //     emit OwnerRecovered(newOwner);
-    // }
-
-    function executeRecovery(address newOwner) external onlyRecovery {
-        require(newOwner != address(0), "New owner cannot be zero");
-        // si quieres mantener la validación de "no configurado", valida que al menos uno esté seteado:
-        require(guardian != address(0) || phoneGuardian != address(0), "No recovery configured");
-        owner = newOwner;
-        emit OwnerRecovered(newOwner);
-    }
-
     /// @inheritdoc BaseAccount
     function entryPoint() public view virtual override returns (IEntryPoint) {
         return _entryPoint;
     }
 
-    constructor(IEntryPoint anEntryPoint, address _tokenPaymaster) {
+    constructor(IEntryPoint anEntryPoint) {
         _entryPoint = anEntryPoint;
-        tokenPaymaster = _tokenPaymaster;
         _disableInitializers();
     }
 
@@ -167,14 +102,13 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
       * the implementation by calling `upgradeTo()`
       * @param anOwner the owner (signer) of this account
      */
-    function initialize(address anOwner, address itsFactory) public virtual initializer {
-        _initialize(anOwner, itsFactory);
+    function initialize(address anOwner) public virtual initializer {
+        _initialize(anOwner);
         emit SimpleAccountInitialized(_entryPoint, owner);
     }
 
-    function _initialize(address anOwner, address itsFactory) internal virtual {
+    function _initialize(address anOwner) internal virtual {
         owner = anOwner;
-        factory = itsFactory;
         emit SimpleAccountInitialized(_entryPoint, owner);
     }
 
@@ -237,10 +171,5 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
     /// @notice active/disable option to pay gas of receiving transfers
     function setCollectOnDeliver(bool _collectOnDeliver) external onlyOwner {
         letCollectOnDeliver = _collectOnDeliver;
-    }
-
-    /// @notice check create debt to paid (only paymaster or factory)
-    function setCreateDebt(uint256 debt) external onlyFactoryOrPaymaster {
-        createDebt = debt;
     }
 }

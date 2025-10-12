@@ -26,7 +26,7 @@ contract SimpleAccountV2Test is Test {
         entryPoint = new EntryPoint();
         
         // Deploy implementations
-        implementation = new SimpleAccount(entryPoint, tokenPaymaster);
+        implementation = new SimpleAccount(entryPoint);
         implementationV2 = new SimpleAccountV2(entryPoint, tokenPaymaster);
         
         // Deploy and initialize proxy
@@ -47,7 +47,6 @@ contract SimpleAccountV2Test is Test {
 
     function test_InitialState() public view {
         assertEq(proxy.owner(), owner);
-        assertEq(proxy.factory(), factory);
         assertEq(address(proxy.entryPoint()), address(entryPoint));
     }
 
@@ -75,67 +74,6 @@ contract SimpleAccountV2Test is Test {
         vm.expectRevert("only owner");
         vm.prank(address(0xBEEF));
         proxy.upgradeToAndCall(address(implementationV2), "");
-    }
-
-    function test_PreserveGuardianLogic() public {
-        // Set guardian in V1
-        vm.prank(owner);
-        proxy.setGuardian(address(0xDEAD));
-        
-        // Upgrade to V2
-        vm.prank(owner);
-        proxy.upgradeToAndCall(address(implementationV2), "");
-        SimpleAccountV2 proxyV2 = SimpleAccountV2(payable(address(proxy)));
-        
-        // Verify guardian state and functionality is preserved
-        assertEq(proxyV2.guardian(), address(0xDEAD));
-        
-        // Test recovery with guardian in V2
-        vm.prank(address(0xDEAD));
-        proxyV2.executeRecovery(address(0xBEEF));
-        assertEq(proxyV2.owner(), address(0xBEEF));
-    }
-
-    function test_NewPhoneGuardianFeature() public {
-        // Set guardian in V1
-        vm.prank(owner);
-        proxy.setPhoneGuardian(address(0xDEAD));
-
-        // Upgrade to V2
-        vm.prank(owner);
-        proxy.upgradeToAndCall(address(implementationV2), "");
-        SimpleAccountV2 proxyV2 = SimpleAccountV2(payable(address(proxy)));
-        
-        // Verify guardian state and functionality is preserved
-        assertEq(proxyV2.phoneGuardian(), address(0xDEAD));
-        
-        // Test recovery with phone guardian
-        vm.prank(address(0xDEAD));
-        proxyV2.executeRecovery(address(0xBEEF));
-        assertEq(proxyV2.owner(), address(0xBEEF));
-    }
-
-    function test_NewIdGuardianFeature() public {
-        vm.startPrank(owner);
-        proxy.setGuardian(address(0x246));
-        proxy.setPhoneGuardian(address(0x802));
-
-        // Upgrade to V2
-        proxy.upgradeToAndCall(address(implementationV2), "");
-        SimpleAccountV2 proxyV2 = SimpleAccountV2(payable(address(proxy)));
-
-        //check state preserves
-        assertEq(proxyV2.guardian(), address(0x246));
-        assertEq(proxyV2.phoneGuardian(), address(0x802));
-
-        // Set guardian
-        proxyV2.setIdGuardian(address(0xDEAD));
-        vm.stopPrank();
-        
-        // Test recovery with id guardian
-        vm.prank(address(0xDEAD));
-        proxyV2.executeRecovery(address(0xBEEF));
-        assertEq(proxyV2.owner(), address(0xBEEF));
     }
 
     function test_idGuardian_notOwner() public {

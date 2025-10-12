@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test, console} from "forge-std/Test.sol";
 import {SimpleAccount} from "../../src/SimpleAccount.sol";
-import {DebtAccountFactory} from "../../src/DebtAccountFactory.sol";
+import {SimpleAccountFactory} from "../../src/SimpleAccountFactory.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "@account-abstraction/interfaces/IEntryPoint.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
@@ -15,7 +15,7 @@ contract SimpleAccountUpgradeableTest is Test {
     //Entrypoint needed, same address on all networks
     IEntryPoint entrypoint = IEntryPoint(0x0000000071727De22E5E9d8BAf0edAc6f37da032);
     //Factory to create new SimpleAccounts
-    DebtAccountFactory factory;
+    SimpleAccountFactory factory;
 
     uint256 ownerPrivateKey = 0x123;
     address owner = vm.addr(0x123);
@@ -23,11 +23,7 @@ contract SimpleAccountUpgradeableTest is Test {
     SimpleAccountV2 upgradedAccount = new SimpleAccountV2(entrypoint, address(0x0));
 
     function setUp() public {
-        address fcOwner = address(0x173);
-        factory = new DebtAccountFactory(entrypoint, fcOwner);
-        //initialize with entrypoint and fake tokenPaymaster
-        vm.prank(fcOwner);
-        factory.initialize(address(0x789));
+        factory = new SimpleAccountFactory(entrypoint);
 
         // Create account
         acc = factory.createAccount(owner, 123456);
@@ -148,31 +144,6 @@ contract SimpleAccountUpgradeableTest is Test {
         vm.stopPrank();
     }
 
-    // 2) Test for unauthorized access control
-    function test_SecurityCritical_UnauthorizedGuardianRecovery() public {
-        address attacker = vm.addr(0x456);
-        
-        // Set a guardian
-        vm.startPrank(owner);
-        acc.setGuardian(vm.addr(0x789));
-        vm.stopPrank();
-        
-        // Attacker tries to execute recovery
-        vm.startPrank(attacker);
-        vm.expectRevert(); // Should revert as attacker is not guardian
-        acc.executeRecovery(attacker);
-        vm.stopPrank();
-    }
-
-    // 3) Test for guardian recovery vulnerabilities
-    function test_SecurityCritical_IntegerOverflow() public {        
-        // Try to set maximum debt value
-        vm.startPrank(address(factory));
-        acc.setCreateDebt(type(uint256).max);
-        assertEq(acc.createDebt(), type(uint256).max, "Should handle max uint256 value");
-        vm.stopPrank();
-    }
-
     // 7) Test for external call security
     function test_SecurityCritical_ExternalCallSecurity() public {        
         // Create a malicious contract that always reverts
@@ -235,12 +206,6 @@ contract SimpleAccountUpgradeableTest is Test {
         vm.startPrank(attacker);
         vm.expectRevert(); // Should revert due to onlyOwner modifier
         acc.withdrawDepositTo(payable(attacker), 0.1 ether);
-        vm.stopPrank();
-        
-        // Attacker tries to set create debt
-        vm.startPrank(attacker);
-        vm.expectRevert(); // Should revert due to access control
-        acc.setCreateDebt(1000);
         vm.stopPrank();
     }
 

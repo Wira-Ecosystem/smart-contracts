@@ -3,15 +3,15 @@ pragma solidity ^0.8.24;
 
 import {Test, console} from "forge-std/Test.sol";
 import {Guardian} from "../../src/Guardians.sol";
-import {SimpleAccount} from "../../src/SimpleAccount.sol";
-import {SimpleAccountFactory} from "../../src/SimpleAccountFactory.sol";
+import {SimpleAccountV2} from "../../src/SimpleAccountV2.sol";
+import {DebtAccountFactory} from "../../src/DebtAccountFactory.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 
 contract GuardianQuorumTest is Test {
     IEntryPoint entrypoint =
         IEntryPoint(0x0000000071727De22E5E9d8BAf0edAc6f37da032);
-    SimpleAccountFactory factory;
-    SimpleAccount account;
+    DebtAccountFactory factory;
+    SimpleAccountV2 account;
     Guardian guardian;
     address owner;
 
@@ -23,7 +23,7 @@ contract GuardianQuorumTest is Test {
     bytes32 guardian3Hash;
 
     function setUp() public {
-        factory = new SimpleAccountFactory(entrypoint, msg.sender);
+        factory = new DebtAccountFactory(entrypoint, msg.sender);
 
         owner = vm.addr(0x123);
         account = factory.createAccount(owner, 123456);

@@ -24,7 +24,7 @@ contract ReplayAttackTest1 is Test {
     address receiver = address(0x999);
 
     function setUp() public {
-        factory = new SimpleAccountFactory(ENTRYPOINT, msg.sender);
+        factory = new SimpleAccountFactory(ENTRYPOINT);
 
         account = factory.createAccount(owner, 123456);
         vm.deal(address(account), 10 ether); 

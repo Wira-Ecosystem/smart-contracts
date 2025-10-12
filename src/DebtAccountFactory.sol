@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import "@openzeppelin/contracts/utils/Create2.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import "./SimpleAccount.sol";
+import "./SimpleAccountV2.sol";
 import "./Guardians.sol";
 /**
  * A sample factory contract for SimpleAccount
@@ -15,7 +15,7 @@ import "./Guardians.sol";
 contract DebtAccountFactory is Initializable {
     IEntryPoint public immutable entryPoint;
     address public fcOwner;
-    SimpleAccount public accountImplementation;
+    SimpleAccountV2 public accountImplementation;
     mapping(address => address) public guardianOf;
     uint256 public gasToDebt = 0;
 
@@ -42,7 +42,7 @@ contract DebtAccountFactory is Initializable {
     }
 
     function initialize(address _tokenPaymaster) external onlyOwner initializer {
-        accountImplementation = new SimpleAccount(entryPoint, _tokenPaymaster);
+        accountImplementation = new SimpleAccountV2(entryPoint, _tokenPaymaster);
         emit AccountCreated(block.chainid, address(accountImplementation));
     }
 
@@ -52,15 +52,15 @@ contract DebtAccountFactory is Initializable {
      * Note that during UserOperation execution, this method is called only if the account is not deployed.
      * This method returns an existing account address so that entryPoint.getSenderAddress() would work even after account creation
      */
-    function createAccount(address owner,uint256 salt) public nonZeroAddress(owner) returns (SimpleAccount ret) {
+    function createAccount(address owner,uint256 salt) public nonZeroAddress(owner) returns (SimpleAccountV2 ret) {
         address addr = getAddress(owner, salt);
         uint256 codeSize = addr.code.length;
         if (codeSize > 0) {
-            return SimpleAccount(payable(addr));
+            return SimpleAccountV2(payable(addr));
         }
-        ret = SimpleAccount(payable(new ERC1967Proxy{salt : bytes32(salt)}(
+        ret = SimpleAccountV2(payable(new ERC1967Proxy{salt : bytes32(salt)}(
                 address(accountImplementation),
-                abi.encodeCall(SimpleAccount.initialize, (owner, address(this)))
+                abi.encodeCall(SimpleAccountV2.initialize, (owner, address(this)))
             )));
         
         ret.setCreateDebt(gasToDebt);
@@ -74,14 +74,14 @@ contract DebtAccountFactory is Initializable {
         require(guardianOf[account] == address(0), "Guardian already exists");
 
         require(
-            SimpleAccount(payable(account)).isThisASimpleAccountContract(),
+            SimpleAccountV2(payable(account)).isThisASimpleAccountContract(),
             "Not a SimpleAccount"
         );
 
         bytes32 guardianSalt = keccak256(abi.encodePacked(account, salt));
         Guardian guardianContract = new Guardian{salt: guardianSalt}(account);
 
-        SimpleAccount(payable(account)).setGuardian(address(guardianContract));
+        SimpleAccountV2(payable(account)).setGuardian(address(guardianContract));
 
         guardianOf[account] = address(guardianContract);
         emit GuardianCreated(account, address(guardianContract));
@@ -97,7 +97,7 @@ contract DebtAccountFactory is Initializable {
                 type(ERC1967Proxy).creationCode,
                 abi.encode(
                     address(accountImplementation),
-                    abi.encodeCall(SimpleAccount.initialize, (owner, address(this)))
+                    abi.encodeCall(SimpleAccountV2.initialize, (owner, address(this)))
                 )
             )
         ));
