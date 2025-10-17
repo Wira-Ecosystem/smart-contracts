@@ -6,6 +6,18 @@
         "@chainlink/contracts@1.4.0/=node_modules/@chainlink/contracts/",
         "@uniswap/v3-periphery/=lib/v3-periphery/",
         "@uniswap/v3-core/=lib/v3-core/",
-        "@wormhole/=lib/wormhole-solidity-sdk/"
+        "@wormhole/=lib/wormhole-solidity-sdk/",
+        "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
+        "account-abstraction/=lib/account-abstraction/contracts/",
+        "ds-test/=lib/wormhole-solidity-sdk/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/forge-std/src/",
+        "halmos-cheatcodes/=lib/openzeppelin-contracts/lib/halmos-cheatcodes/src/",
+        "openzeppelin-contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin-foundry-upgrades/=lib/openzeppelin-foundry-upgrades/src/",
+        "v3-core/=lib/v3-core/",
+        "v3-periphery/=lib/v3-periphery/contracts/",
+        "wormhole-solidity-sdk/=lib/wormhole-solidity-sdk/src/"
     ]
 }
