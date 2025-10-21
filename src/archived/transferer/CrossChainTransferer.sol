@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.24;
 
-import "@wormhole/src/WormholeRelayerSDK.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {TokenSender, TokenBase} from "@wormhole/src/WormholeRelayerSDK.sol";
+import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
-import "../utils/UniswapHelper.sol";
-import "../utils/OracleHelper.sol";
+import {UniswapHelper, ISwapRouter} from "../utils/UniswapHelper.sol";
+import {OracleHelper} from "../utils/OracleHelper.sol";
 
 contract CrossChainTransferer is UniswapHelper, OracleHelper, TokenSender {
 
@@ -65,7 +65,7 @@ contract CrossChainTransferer is UniswapHelper, OracleHelper, TokenSender {
         address transferToken
     ) external senderIsValid(sender) {
         if(msg.sender == sender) {
-            SafeERC20.safeTransferFrom(token, msg.sender, address(this), quoteCrossChainDeposit(targetChain));
+            SafeERC20.safeTransferFrom(TOKEN, msg.sender, address(this), quoteCrossChainDeposit(targetChain));
         }
         SafeERC20.safeTransferFrom(IERC20(transferToken), sender, address(this), amount);
 

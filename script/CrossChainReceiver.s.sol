@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.24;
 
-import "forge-std/Script.sol";
-import "../src//transferer/CrossChainReceiver.sol";
+import {Script, console} from "forge-std/Script.sol";
+import {CrossChainReceiver} from "../src/archived/transferer/CrossChainReceiver.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 
 contract CrossChainReceiverScript is Script {

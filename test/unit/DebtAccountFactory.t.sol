@@ -2,8 +2,8 @@
 pragma solidity ^0.8.24;
 
 import {Test, console} from "forge-std/Test.sol";
-import {DebtAccountFactory} from "../../src/DebtAccountFactory.sol";
-import {SimpleAccountV2} from "../../src/SimpleAccountV2.sol";
+import {DebtAccountFactory} from "../../src/archived/DebtAccountFactory.sol";
+import {SimpleAccountV2} from "../../src/archived/SimpleAccountV2.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 
 //Test set up for simple account

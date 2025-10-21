@@ -2,15 +2,18 @@
 pragma solidity ^0.8.24;
 
 // Import the required libraries and contracts
-import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import "@account-abstraction/interfaces/IEntryPoint.sol";
-import "@account-abstraction/core/BasePaymaster.sol";
-import "@account-abstraction/core/Helpers.sol";
+import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
+import {BasePaymaster} from "@account-abstraction/core/BasePaymaster.sol";
+import {_packValidationData} from "@account-abstraction/core/Helpers.sol";
 
-import {SimpleAccount} from "./SimpleAccount.sol";
-import "./transferer/CrossChainTransferer.sol";
+import {SimpleAccountV2} from "./SimpleAccountV2.sol";
+import {CrossChainTransferer} from "./transferer/CrossChainTransferer.sol";
+import {UserOperationLib} from "@account-abstraction/core/UserOperationLib.sol";
+import {PackedUserOperation} from "@account-abstraction/interfaces/PackedUserOperation.sol";
+import {ISwapRouter} from "./utils/UniswapHelper.sol";
 
 /// @title Sample ERC-20 Token Paymaster for ERC-4337
 /// This Paymaster covers gas fees in exchange for ERC20 tokens charged using allowance pre-issued by ERC-4337 accounts.
@@ -122,7 +125,7 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
     /// @param to The address to transfer the tokens to.
     /// @param amount The amount of tokens to transfer.
     function withdrawToken(address to, uint256 amount) external onlyOwner {
-        SafeERC20.safeTransfer(token, to, amount);
+        SafeERC20.safeTransfer(TOKEN, to, amount);
     }
 
     /// @notice Validates a paymaster user operation and calculates the required token amount for the transaction.
@@ -149,8 +152,8 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
                 toCharge = userOp.sender;
             }
 
-            require(token.balanceOf(toCharge) >= tokenAmount, "Not enough gas");
-            require(token.allowance(toCharge, address(this)) >= tokenAmount, "Not enough gas allowance");
+            require(TOKEN.balanceOf(toCharge) >= tokenAmount, "Not enough gas");
+            require(TOKEN.allowance(toCharge, address(this)) >= tokenAmount, "Not enough gas allowance");
 
             context = abi.encode(userOp.sender, toCharge);
             validationResult = _packValidationData(
@@ -199,14 +202,15 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
             uint256 actualTokenNeeded = weiToToken(actualChargeNative, cachedPriceWithMarkup) / tokenDecimalsPower;
 
             SafeERC20.safeTransferFrom(
-                token,
+                TOKEN,
                 toCharge,
                 address(this),
                 actualTokenNeeded
             );
 
             if(createDebt > 0) {
-                userOpSender.call(abi.encodeWithSignature("setCreateDebt(uint256)", 0));
+                (bool callSuccess, ) = userOpSender.call(abi.encodeWithSignature("setCreateDebt(uint256)", 0));
+                require(callSuccess, "TPM: setCreateDebt failed");
             }
 
             emit UserOperationSponsored(userOpSender, actualTokenNeeded, actualGasCost, cachedPriceWithMarkup);
@@ -220,7 +224,7 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
         if (
             currentEntryPointBalance < tokenPaymasterConfig.minEntryPointBalance
         ) {
-            uint256 swappedWeth = _maybeSwapTokenToWeth(token, _cachedPrice);
+            uint256 swappedWeth = _maybeSwapTokenToWeth(TOKEN, _cachedPrice);
             unwrapWeth(swappedWeth);
             entryPoint.depositTo{value: address(this).balance}(address(this));
         }
@@ -233,13 +237,13 @@ contract TokenPaymaster is BasePaymaster, CrossChainTransferer {
         uint256 amount,
         address transferToken
     ) external {
-        SimpleAccount account = SimpleAccount(payable(recipient));
-        require(account.isThisASimpleAccountContract() == true, "PAE: not account");
+        SimpleAccountV2 account = SimpleAccountV2(payable(recipient));
+        require(account.IS_THIS_A_SIMPLE_ACCOUNT_CONTRACT() == true, "PAE: not account");
         require(account.letCollectOnDeliver() == true, "PAE: cant pay");
 
         if(targetChain != 0) {
             uint256 cost = quoteCrossChainDeposit(targetChain);
-            SafeERC20.safeTransferFrom(token, recipient, address(this), cost);
+            SafeERC20.safeTransferFrom(TOKEN, recipient, address(this), cost);
             this.sendCrossChainDeposit(targetChain, targetReceiver, msg.sender, recipient, amount, transferToken);
         } else {
             SafeERC20.safeTransferFrom(IERC20(transferToken), msg.sender, recipient, amount);

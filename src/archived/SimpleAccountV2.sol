@@ -5,16 +5,17 @@ pragma solidity ^0.8.24;
 /* solhint-disable no-inline-assembly */
 /* solhint-disable reason-string */
 
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
-import "@account-abstraction/core/BaseAccount.sol";
-import "@account-abstraction/core/Helpers.sol";
-import "./TokenCallbackHandler.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {BaseAccount} from "@account-abstraction/core/BaseAccount.sol";
+import {SIG_VALIDATION_FAILED, SIG_VALIDATION_SUCCESS} from "@account-abstraction/core/Helpers.sol";
+import {TokenCallbackHandler} from "../TokenCallbackHandler.sol";
+import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
+import {PackedUserOperation} from "@account-abstraction/interfaces/PackedUserOperation.sol";
 
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "./Guardians.sol";
+import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * SimpleAccount V2
@@ -22,18 +23,18 @@ import "./Guardians.sol";
  */
 contract SimpleAccountV2 is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, Initializable {
     address public owner;
-    IEntryPoint private immutable _entryPoint;
+    IEntryPoint private immutable _ENTRYPOINT;
     address public guardian;
     address public phoneGuardian; 
     address public factory;
-    address public immutable tokenPaymaster;
+    address public immutable TOKEN_PAYMASTER;
 
     using SafeERC20 for IERC20;
     mapping(bytes32 => string) private _streamOf;
 
     error GuardianNotConfigurado();
 
-    bool public immutable isThisASimpleAccountContract = true;
+    bool public immutable IS_THIS_A_SIMPLE_ACCOUNT_CONTRACT = true;
     bool public letCollectOnDeliver;
     uint256 public createDebt;
     address public idGuardian;
@@ -50,7 +51,7 @@ contract SimpleAccountV2 is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, 
     }
 
     modifier onlyFactoryOrPaymaster() {
-        require(msg.sender == tokenPaymaster || msg.sender == factory, "Only factory or paymaster");
+        require(msg.sender == TOKEN_PAYMASTER || msg.sender == factory, "Only factory or paymaster");
         _;
     }
 
@@ -110,12 +111,12 @@ contract SimpleAccountV2 is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, 
 
     /// @inheritdoc BaseAccount
     function entryPoint() public view virtual override returns (IEntryPoint) {
-        return _entryPoint;
+        return _ENTRYPOINT;
     }
 
     constructor(IEntryPoint anEntryPoint, address _tokenPaymaster) {
-        _entryPoint = anEntryPoint;
-        tokenPaymaster = _tokenPaymaster;
+        _ENTRYPOINT = anEntryPoint;
+        TOKEN_PAYMASTER = _tokenPaymaster;
         _disableInitializers();
     }
 
@@ -157,20 +158,20 @@ contract SimpleAccountV2 is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, 
     }
 
     /**
-     * @dev The _entryPoint member is immutable, to reduce gas consumption.  To upgrade EntryPoint,
+     * @dev The _ENTRYPOINT member is immutable, to reduce gas consumption.  To upgrade EntryPoint,
      * a new implementation of SimpleAccount must be deployed with the new EntryPoint address, then upgrading
       * the implementation by calling `upgradeTo()`
       * @param anOwner the owner (signer) of this account
      */
     function initialize(address anOwner, address itsFactory) public virtual initializer {
         _initialize(anOwner, itsFactory);
-        emit SimpleAccountInitialized(_entryPoint, owner);
+        emit SimpleAccountInitialized(_ENTRYPOINT, owner);
     }
 
     function _initialize(address anOwner, address itsFactory) internal virtual {
         owner = anOwner;
         factory = itsFactory;
-        emit SimpleAccountInitialized(_entryPoint, owner);
+        emit SimpleAccountInitialized(_ENTRYPOINT, owner);
     }
 
     // Require the function call went through EntryPoint or owner

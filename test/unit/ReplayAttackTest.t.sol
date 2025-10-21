@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {SimpleAccount} from "../../src/SimpleAccount.sol";
 import {SimpleAccountFactory} from "../../src/SimpleAccountFactory.sol";
 import {
     IEntryPoint,
     PackedUserOperation
 } from "@account-abstraction/interfaces/IEntryPoint.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol"; // ← nuevo
 
 contract ReplayAttackTest1 is Test {
@@ -21,7 +20,7 @@ contract ReplayAttackTest1 is Test {
 
     uint256 constant OWNER_PK = 0x123;
     address owner    = vm.addr(OWNER_PK);
-    address receiver = address(0x999);
+    address receiver = makeAddr("receiver");
 
     function setUp() public {
         factory = new SimpleAccountFactory(ENTRYPOINT);

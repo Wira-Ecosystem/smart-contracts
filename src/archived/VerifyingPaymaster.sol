@@ -4,11 +4,16 @@ pragma solidity ^0.8.24;
 /* solhint-disable reason-string */
 /* solhint-disable no-inline-assembly */
 
-import "@account-abstraction/core/BasePaymaster.sol";
-import "@account-abstraction/core/UserOperationLib.sol";
-import "@account-abstraction/core/Helpers.sol";
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {BasePaymaster} from "@account-abstraction/core/BasePaymaster.sol";
+import {UserOperationLib} from "@account-abstraction/core/UserOperationLib.sol";
+import {UserOperationLib} from "@account-abstraction/core/UserOperationLib.sol";
+import {PackedUserOperation} from "@account-abstraction/interfaces/PackedUserOperation.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
+import {_packValidationData} from "@account-abstraction/core/Helpers.sol";
+
+
 /**
  * A sample paymaster that uses external service to decide whether to pay for the UserOp.
  * The paymaster trusts an external signer to sign the transaction.
@@ -22,14 +27,14 @@ contract VerifyingPaymaster is BasePaymaster {
 
     using UserOperationLib for PackedUserOperation;
 
-    address public immutable verifyingSigner;
+    address public immutable VERIFYING_SIGNER;
 
     uint256 private constant VALID_TIMESTAMP_OFFSET = PAYMASTER_DATA_OFFSET;
 
     uint256 private constant SIGNATURE_OFFSET = VALID_TIMESTAMP_OFFSET + 64;
 
     constructor(IEntryPoint _entryPoint, address _verifyingSigner) BasePaymaster(_entryPoint) {
-        verifyingSigner = _verifyingSigner;
+        VERIFYING_SIGNER = _verifyingSigner;
     }
 
     /**
@@ -79,7 +84,7 @@ contract VerifyingPaymaster is BasePaymaster {
         bytes32 hash = MessageHashUtils.toEthSignedMessageHash(opHash);
 
         //don't revert on signature failure: return SIG_VALIDATION_FAILED
-        if (verifyingSigner != ECDSA.recover(hash, signature)) {
+        if (VERIFYING_SIGNER != ECDSA.recover(hash, signature)) {
             return ("", _packValidationData(true, validUntil, validAfter));
         }
 

@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.24;
 
-import "@openzeppelin/contracts/utils/Create2.sol";
-import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import "./SimpleAccountV2.sol";
-import "./Guardians.sol";
+import {SimpleAccountV2} from "./SimpleAccountV2.sol";
+import {Guardian} from "./Guardians.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
+
 /**
  * A sample factory contract for SimpleAccount
  * A UserOperations "initCode" holds the address of the factory, and a method call (to createAccount, in this sample factory).
@@ -13,7 +16,7 @@ import "./Guardians.sol";
  * This way, the entryPoint.getSenderAddress() can be called either before or after the account is created.
  */
 contract DebtAccountFactory is Initializable {
-    IEntryPoint public immutable entryPoint;
+    IEntryPoint public immutable ENTRYPOINT;
     address public fcOwner;
     SimpleAccountV2 public accountImplementation;
     mapping(address => address) public guardianOf;
@@ -38,11 +41,11 @@ contract DebtAccountFactory is Initializable {
 
     constructor(IEntryPoint _entryPoint, address _owner) {
         fcOwner = _owner;
-        entryPoint = _entryPoint;
+        ENTRYPOINT = _entryPoint;
     }
 
     function initialize(address _tokenPaymaster) external onlyOwner initializer {
-        accountImplementation = new SimpleAccountV2(entryPoint, _tokenPaymaster);
+        accountImplementation = new SimpleAccountV2(ENTRYPOINT, _tokenPaymaster);
         emit AccountCreated(block.chainid, address(accountImplementation));
     }
 
@@ -74,7 +77,7 @@ contract DebtAccountFactory is Initializable {
         require(guardianOf[account] == address(0), "Guardian already exists");
 
         require(
-            SimpleAccountV2(payable(account)).isThisASimpleAccountContract(),
+            SimpleAccountV2(payable(account)).IS_THIS_A_SIMPLE_ACCOUNT_CONTRACT(),
             "Not a SimpleAccount"
         );
 
@@ -130,7 +133,7 @@ contract DebtAccountFactory is Initializable {
      * @param unstakeDelaySec - The unstake delay for this factory. Can only be increased.
      */
     function addStake(uint32 unstakeDelaySec) external payable onlyOwner {
-        entryPoint.addStake{value: msg.value}(unstakeDelaySec);
+        ENTRYPOINT.addStake{value: msg.value}(unstakeDelaySec);
     }
 
     /**
@@ -138,7 +141,7 @@ contract DebtAccountFactory is Initializable {
      * The factory can't serve requests once unlocked, until it calls addStake again
      */
     function unlockStake() external onlyOwner {
-        entryPoint.unlockStake();
+        ENTRYPOINT.unlockStake();
     }
 
     /**
@@ -147,6 +150,6 @@ contract DebtAccountFactory is Initializable {
      * @param withdrawAddress - The address to send withdrawn value.
      */
     function withdrawStake(address payable withdrawAddress) external onlyOwner {
-        entryPoint.withdrawStake(withdrawAddress);
+        ENTRYPOINT.withdrawStake(withdrawAddress);
     }
 }

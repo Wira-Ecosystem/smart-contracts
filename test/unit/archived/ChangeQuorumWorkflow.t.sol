@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {Test, console} from "forge-std/Test.sol";
-import {DebtAccountFactory} from "../../src/DebtAccountFactory.sol";
-import {SimpleAccountV2} from "../../src/SimpleAccountV2.sol";
-import {Guardian} from "../../src/Guardians.sol";
+import {Test} from "forge-std/Test.sol";
+import {DebtAccountFactory} from "../../../src/archived/DebtAccountFactory.sol";
+import {SimpleAccountV2} from "../../../src/archived/SimpleAccountV2.sol";
+import {Guardian} from "../../../src/archived/Guardians.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
-import {Vm} from "forge-std/Vm.sol";
+
 contract ChangeQuorumWorkflowTest is Test {
     IEntryPoint entrypoint = IEntryPoint(0x0000000071727De22E5E9d8BAf0edAc6f37da032);
     DebtAccountFactory factory;
@@ -23,7 +23,10 @@ contract ChangeQuorumWorkflowTest is Test {
     bytes32 guardian3Hash;
 
     function setUp() public {
+        vm.startPrank(msg.sender);
         factory = new DebtAccountFactory(entrypoint, msg.sender);
+        factory.initialize(address(0));
+        vm.stopPrank();
         
         owner = address(0x123);
         account = factory.createAccount(owner, 123456);

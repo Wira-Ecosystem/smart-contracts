@@ -5,13 +5,15 @@ pragma solidity ^0.8.24;
 /* solhint-disable no-inline-assembly */
 /* solhint-disable reason-string */
 
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
-import "@account-abstraction/core/BaseAccount.sol";
-import "@account-abstraction/core/Helpers.sol";
-import "./TokenCallbackHandler.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {BaseAccount} from "@account-abstraction/core/BaseAccount.sol";
+import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
+import {PackedUserOperation} from "@account-abstraction/interfaces/PackedUserOperation.sol";
+import {SIG_VALIDATION_FAILED, SIG_VALIDATION_SUCCESS} from "@account-abstraction/core/Helpers.sol";
+import {TokenCallbackHandler} from "./TokenCallbackHandler.sol";
 
 /**
   * minimal account.
@@ -21,41 +23,22 @@ import "./TokenCallbackHandler.sol";
   */
 contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, Initializable {
     address public owner;
-    IEntryPoint private immutable _entryPoint;
-
-    mapping(bytes32 => string) private _streamOf;
-
-    bool public immutable isThisASimpleAccountContract = true;
-    bool public letCollectOnDeliver;
+    IEntryPoint private immutable _ENTRYPOINT;
 
     event SimpleAccountInitialized(IEntryPoint indexed entryPoint, address indexed owner);
-    event StreamRegistered(bytes32 indexed idHash, string streamId);
 
     modifier onlyOwner() {
         _onlyOwner();
         _;
     }
 
-    function registerStream(
-        bytes32 idHash,
-        string calldata streamId
-    ) external onlyOwner {
-        require(bytes(_streamOf[idHash]).length == 0, "already registered");
-        _streamOf[idHash] = streamId;
-        emit StreamRegistered(idHash, streamId);
-    }
-
-    function getStream(bytes32 idHash) external view returns (string memory) {
-        return _streamOf[idHash];
-    }
-
     /// @inheritdoc BaseAccount
     function entryPoint() public view virtual override returns (IEntryPoint) {
-        return _entryPoint;
+        return _ENTRYPOINT;
     }
 
     constructor(IEntryPoint anEntryPoint) {
-        _entryPoint = anEntryPoint;
+        _ENTRYPOINT = anEntryPoint;
         _disableInitializers();
     }
 
@@ -97,19 +80,19 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
     }
 
     /**
-     * @dev The _entryPoint member is immutable, to reduce gas consumption.  To upgrade EntryPoint,
+     * @dev The _ENTRYPOINT member is immutable, to reduce gas consumption.  To upgrade EntryPoint,
      * a new implementation of SimpleAccount must be deployed with the new EntryPoint address, then upgrading
       * the implementation by calling `upgradeTo()`
       * @param anOwner the owner (signer) of this account
      */
     function initialize(address anOwner) public virtual initializer {
         _initialize(anOwner);
-        emit SimpleAccountInitialized(_entryPoint, owner);
+        emit SimpleAccountInitialized(_ENTRYPOINT, owner);
     }
 
     function _initialize(address anOwner) internal virtual {
         owner = anOwner;
-        emit SimpleAccountInitialized(_entryPoint, owner);
+        emit SimpleAccountInitialized(_ENTRYPOINT, owner);
     }
 
     // Require the function call went through EntryPoint or owner
@@ -167,9 +150,4 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
     /// @dev This function has no function body, making it a default function for receiving Ether.
     /// It is automatically called when Ether is transferred to the contract without any data.
     receive() external payable {}
-
-    /// @notice active/disable option to pay gas of receiving transfers
-    function setCollectOnDeliver(bool _collectOnDeliver) external onlyOwner {
-        letCollectOnDeliver = _collectOnDeliver;
-    }
 }

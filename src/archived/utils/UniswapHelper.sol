@@ -3,10 +3,10 @@ pragma solidity ^0.8.24;
 
 /* solhint-disable not-rely-on-time */
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
-import "@uniswap/v3-periphery/contracts/interfaces/IPeripheryPayments.sol";
+import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import {IPeripheryPayments} from "@uniswap/v3-periphery/contracts/interfaces/IPeripheryPayments.sol";
 
 abstract contract UniswapHelper {
     event UniswapReverted(address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOutMin);
@@ -23,13 +23,13 @@ abstract contract UniswapHelper {
     }
 
     /// @notice The Uniswap V3 SwapRouter contract
-    ISwapRouter public immutable uniswap;
+    ISwapRouter public immutable UNISWAP;
 
     /// @notice The ERC20 token used for transaction fee payments
-    IERC20 public immutable token;
+    IERC20 public immutable TOKEN;
 
     /// @notice The ERC-20 token that wraps the native asset for current chain
-    IERC20 public immutable wrappedNative;
+    IERC20 public immutable WRAPPED_NATIVE;
 
     UniswapHelperConfig private uniswapHelperConfig;
 
@@ -40,9 +40,9 @@ abstract contract UniswapHelper {
         UniswapHelperConfig memory _uniswapHelperConfig
     ){
         _token.approve(address(_uniswap), type(uint256).max);
-        token = _token;
-        wrappedNative = _wrappedNative;
-        uniswap = _uniswap;
+        TOKEN = _token;
+        WRAPPED_NATIVE = _wrappedNative;
+        UNISWAP = _uniswap;
         _setUniswapHelperConfiguration(_uniswapHelperConfig);
     }
 
@@ -59,7 +59,7 @@ abstract contract UniswapHelper {
         // note: calling 'swapToToken' but destination token is Wrapped Ether
         return swapToToken(
             address(tokenIn),
-            address(wrappedNative),
+            address(WRAPPED_NATIVE),
             tokenBalance,
             amountOutMin,
             uniswapHelperConfig.uniswapPoolFee
@@ -80,7 +80,7 @@ abstract contract UniswapHelper {
     }
 
     function unwrapWeth(uint256 amount) internal {
-        IPeripheryPayments(address(uniswap)).unwrapWETH9(amount, address(this));
+        IPeripheryPayments(address(UNISWAP)).unwrapWETH9(amount, address(this));
     }
 
     // swap ERC-20 tokens at market price
@@ -95,13 +95,13 @@ abstract contract UniswapHelper {
             tokenIn, //tokenIn
             tokenOut, //tokenOut
             fee,
-            address(uniswap),
+            address(UNISWAP),
             block.timestamp, //deadline
             amountIn,
             amountOutMin,
             0
         );
-        try uniswap.exactInputSingle(params) returns (uint256 _amountOut) {
+        try UNISWAP.exactInputSingle(params) returns (uint256 _amountOut) {
             amountOut = _amountOut;
         } catch {
             emit UniswapReverted(tokenIn, tokenOut, amountIn, amountOutMin);

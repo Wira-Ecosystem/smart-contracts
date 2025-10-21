@@ -7,34 +7,35 @@ import {SimpleAccountFactory} from "../../src/SimpleAccountFactory.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "@account-abstraction/interfaces/IEntryPoint.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {SimpleAccountV2} from "../../src/archived/SimpleAccountV2.sol";
 
-//Test set up for simple account
-contract SimpleAccountTest is Test {
+//Security test for simple account
+contract SimpleAccountSecurityTest is Test {
     //Entrypoint needed, same address on all networks
     IEntryPoint entrypoint = IEntryPoint(0x0000000071727De22E5E9d8BAf0edAc6f37da032);
     //Factory to create new SimpleAccounts
     SimpleAccountFactory factory;
 
+    uint256 ownerPrivateKey = 0x123;
+    address owner = vm.addr(0x123);
+    SimpleAccount acc;
+    SimpleAccountV2 upgradedAccount = new SimpleAccountV2(entrypoint, address(0x0));
+
     function setUp() public {
         factory = new SimpleAccountFactory(entrypoint);
+
+        // Create account
+        acc = factory.createAccount(owner, 123456);
+        upgradeAccount();
     }
 
-
-
-    // 1) VALIDACIÓN DE FIRMA
-    // Signature Validation Tests ====================================================
-    function test_SignatureValidation_Success() public {
-        uint256 ownerPrivateKey = 0x123;
-        address owner = vm.addr(0x123);
-        // Create account
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-        
+    function prepareUserOp(address to, uint256 value, bytes memory data) public view returns(PackedUserOperation memory, bytes32) {
         // Prepare user operation
         PackedUserOperation memory userOp = PackedUserOperation({
             sender: address(acc),
             nonce: 0,
             initCode: "",
-            callData: abi.encodeWithSignature("execute(address,uint256,bytes)", address(acc), 0, ""),
+            callData: abi.encodeWithSignature("execute(address,uint256,bytes)", to, value, data),
             accountGasLimits: 0,
             preVerificationGas: 0,
             gasFees: 0,
@@ -47,11 +48,30 @@ contract SimpleAccountTest is Test {
         bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(userOpHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPrivateKey, ethSignedHash);
         userOp.signature = abi.encodePacked(r, s, v);
+        return (userOp, userOpHash);
+    }
+
+    function upgradeAccount() public {
+        //upgrade implementation
+        vm.prank(owner);
+        acc.execute(
+            address(acc),
+            0,
+            abi.encodeWithSelector(acc.upgradeToAndCall.selector, address(upgradedAccount), "")
+        );
+    }
+
+    // Signature Validation Tests ====================================================
+    function test_SignatureValidation_Success() public {
+        (PackedUserOperation memory userOp, bytes32 userOpHash) = prepareUserOp(
+            address(acc),
+            0,
+            bytes("")
+        );
         
         // Validate signature
-        vm.startPrank(address(entrypoint));
-        uint256 validationData = acc.validateUserOp(userOp, userOpHash, 0); // aquie pod derás se usa _validateSignature
-        vm.stopPrank();
+        vm.prank(address(entrypoint));
+        uint256 validationData = acc.validateUserOp(userOp, userOpHash, 0);
         
         // Should return SIG_VALIDATION_SUCCESS (0)
         assertEq(validationData, 0, "Signature validation should succeed");
@@ -59,29 +79,15 @@ contract SimpleAccountTest is Test {
 
     
     function test_SignatureValidation_Failure_WrongSigner() public {
-        address owner = vm.addr(0x123);
-        uint256 nonOwnerPrivateKey = 0x456; // Clave diferente
-        // Create account
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-        
-        // Prepare user operation
-        PackedUserOperation memory userOp = PackedUserOperation({
-            sender: address(acc),
-            nonce: 0,
-            initCode: "",
-            callData: abi.encodeWithSignature("execute(address,uint256,bytes)", address(acc), 0, ""),
-            accountGasLimits: 0,
-            preVerificationGas: 0,
-            gasFees: 0,
-            paymasterAndData: "",
-            signature: ""
-        });
-        
+        uint256 nonOwnerPrivateKey = 0x456;
+        (PackedUserOperation memory userOp,) = prepareUserOp(address(acc),0,bytes(""));
+
         // Get userOp hash and sign with WRONG key
         bytes32 userOpHash = entrypoint.getUserOpHash(userOp);
         bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(userOpHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(nonOwnerPrivateKey, ethSignedHash);
         userOp.signature = abi.encodePacked(r, s, v);
+
         
         // Validate signature
         vm.startPrank(address(entrypoint));
@@ -93,29 +99,7 @@ contract SimpleAccountTest is Test {
     }
 
     function test_SignatureValidation_Failure_TamperedData() public {
-        uint256 ownerPrivateKey = 0x123;
-        address owner = vm.addr(0x123);
-        // Create account
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-        
-        // Prepare user operation
-        PackedUserOperation memory userOp = PackedUserOperation({
-            sender: address(acc),
-            nonce: 0,
-            initCode: "",
-            callData: abi.encodeWithSignature("execute(address,uint256,bytes)", address(acc), 0, ""),
-            accountGasLimits: 0,
-            preVerificationGas: 0,
-            gasFees: 0,
-            paymasterAndData: "",
-            signature: ""
-        });
-        
-        // Get userOp hash and sign
-        bytes32 userOpHash = entrypoint.getUserOpHash(userOp);
-        bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(userOpHash);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPrivateKey, ethSignedHash);
-        userOp.signature = abi.encodePacked(r, s, v);
+        (PackedUserOperation memory userOp,) = prepareUserOp(address(acc),0,bytes(""));
         
         // Tamper with the data after signing
         userOp.callData = abi.encodeWithSignature("execute(address,uint256,bytes)", address(acc), 1 ether, "");
@@ -133,10 +117,7 @@ contract SimpleAccountTest is Test {
     // ===================== CRITICAL SECURITY TESTS =====================
 
     // 1) Test for reentrancy attacks
-    function test_SecurityCritical_ReentrancyAttack() public {
-        address owner = vm.addr(0x123);
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-        
+    function test_SecurityCritical_ReentrancyAttack() public {        
         // Fund the account
         vm.deal(address(acc), 2 ether);
         vm.startPrank(owner);
@@ -153,10 +134,8 @@ contract SimpleAccountTest is Test {
 
     // 2) Test for unauthorized access control
     function test_SecurityCritical_UnauthorizedExecute() public {
-        address owner = vm.addr(0x123);
         address attacker = vm.addr(0x456);
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-        
+
         // Attacker tries to execute unauthorized transaction
         vm.startPrank(attacker);
         vm.expectRevert(); // Should revert due to access control
@@ -164,42 +143,8 @@ contract SimpleAccountTest is Test {
         vm.stopPrank();
     }
 
-    // 2) Test for unauthorized access control
-    /*function test_SecurityCritical_UnauthorizedGuardianRecovery() public {
-        address owner = vm.addr(0x123);
-        address attacker = vm.addr(0x456);
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-        
-        // Set a guardian
-        vm.startPrank(owner);
-        acc.setGuardian(vm.addr(0x789));
-        vm.stopPrank();
-        
-        // Attacker tries to execute recovery
-        vm.startPrank(attacker);
-        vm.expectRevert(); // Should revert as attacker is not guardian
-        acc.executeRecovery(attacker);
-        vm.stopPrank();
-    }*/
-
-    // 3) Test for guardian recovery vulnerabilities
-    /*
-    function test_SecurityCritical_IntegerOverflow() public {
-        address owner = vm.addr(0x123);
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-        
-        // Try to set maximum debt value
-        vm.startPrank(address(factory));
-        acc.setCreateDebt(type(uint256).max);
-        assertEq(acc.createDebt(), type(uint256).max, "Should handle max uint256 value");
-        vm.stopPrank();
-    }*/
-
     // 7) Test for external call security
-    function test_SecurityCritical_ExternalCallSecurity() public {
-        address owner = vm.addr(0x123);
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-        
+    function test_SecurityCritical_ExternalCallSecurity() public {        
         // Create a malicious contract that always reverts
         address maliciousContract = address(new MaliciousContract());
         
@@ -212,29 +157,24 @@ contract SimpleAccountTest is Test {
         vm.stopPrank();
     }
 
+    // 8) Test for gas griefing attacks
+    function test_SecurityCritical_GasGriefing() public {        
+        vm.startPrank(owner);
+        
+        // Try to execute a gas-expensive operation
+        uint256 gasStart = gasleft();
+        acc.execute(address(acc), 0, abi.encodeWithSignature("setCollectOnDeliver(bool)", true));
+        uint256 gasUsed = gasStart - gasleft();
+        
+        // Gas consumption should be reasonable
+        assertTrue(gasUsed < 100000, "Gas consumption should be reasonable");
+        
+        vm.stopPrank();
+    }
+
     // 9) Test for signature replay attacks
     function test_SecurityCritical_SignatureReplay() public {
-        uint256 ownerPrivateKey = 0x123;
-        address owner = vm.addr(0x123);
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-        
-        // Create and sign a user operation
-        PackedUserOperation memory userOp = PackedUserOperation({
-            sender: address(acc),
-            nonce: 0,
-            initCode: "",
-            callData: abi.encodeWithSignature("execute(address,uint256,bytes)", address(acc), 0, ""),
-            accountGasLimits: 0,
-            preVerificationGas: 0,
-            gasFees: 0,
-            paymasterAndData: "",
-            signature: ""
-        });
-        
-        bytes32 userOpHash = entrypoint.getUserOpHash(userOp);
-        bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(userOpHash);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPrivateKey, ethSignedHash);
-        userOp.signature = abi.encodePacked(r, s, v);
+        (PackedUserOperation memory userOp, bytes32 userOpHash) = prepareUserOp(address(acc),0,bytes(""));
         
         // First validation should succeed
         vm.startPrank(address(entrypoint));
@@ -249,9 +189,7 @@ contract SimpleAccountTest is Test {
 
     // 10) Test for access control on critical functions
     function test_SecurityCritical_AccessControlCriticalFunctions() public {
-        address owner = vm.addr(0x123);
         address attacker = vm.addr(0x456);
-        SimpleAccount acc = factory.createAccount(owner, 123456);
         
         // Give the owner some ETH and deposit to EntryPoint directly
         vm.deal(owner, 1 ether);
@@ -268,30 +206,18 @@ contract SimpleAccountTest is Test {
         vm.expectRevert(); // Should revert due to onlyOwner modifier
         acc.withdrawDepositTo(payable(attacker), 0.1 ether);
         vm.stopPrank();
-        
-        // Attacker tries to set create debt
-        /*
-        vm.startPrank(attacker);
-        vm.expectRevert(); // Should revert due to access control
-        acc.setCreateDebt(1000);
-        vm.stopPrank();*/
     }
 
     // ===================== WORKFLOW TESTS =====================
 
     function test_GetDeposit() public {
-        //Create a new account with the factory, an owner and a random salt
-        SimpleAccount acc = factory.createAccount(msg.sender, 123456);
-
         //Reading calls are simple
+        vm.startPrank(owner);
         uint deposit = acc.getDeposit();
         assertEq(deposit, 0);
     }
 
     function test_AddDeposit() public {
-        address owner = vm.addr(0x123);
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-
         //To call a payable function through execute, account and not owner must have funds
         vm.deal(address(acc), 1 ether);
         vm.startPrank(owner);
@@ -305,9 +231,6 @@ contract SimpleAccountTest is Test {
     }
 
     function test_AddDepositWithoutFunds() public {
-        address owner = vm.addr(0x123);
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-
         vm.startPrank(owner);
 
         assertEq(acc.getDeposit(), 0);
@@ -321,8 +244,7 @@ contract SimpleAccountTest is Test {
     }
 
     function test_WithdrawDepositTo() public {
-        address payable owner = payable(vm.addr(0x123));
-        SimpleAccount acc = fundAccountDeposit(owner);
+        acc = fundAccountDeposit(owner);
         address receiver = vm.addr(0x456);
 
         vm.startPrank(owner);
@@ -333,11 +255,9 @@ contract SimpleAccountTest is Test {
         assertEq(receiver.balance, 0.01 ether);
     }
 
-    function fundAccountDeposit(address owner) internal returns(SimpleAccount) {
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-
+    function fundAccountDeposit(address accOwner) internal returns(SimpleAccount) {
         vm.deal(address(acc), 1 ether);
-        vm.startPrank(owner);
+        vm.startPrank(accOwner);
 
         assertEq(acc.getDeposit(), 0);
         bytes memory func = abi.encodeWithSignature("addDeposit()");

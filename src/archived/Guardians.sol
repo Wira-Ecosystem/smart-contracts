@@ -24,7 +24,7 @@ contract Guardian {
         uint40 invitedAt;
     }
 
-    address public immutable owner; // address from SimpleAccount to delegate gaurdians
+    address public immutable OWNER; // address from SimpleAccount to delegate gaurdians
     //address[] public guardianHashes; // Mal no coincide con el tipo real que se usa
     bytes32[] public guardianHashes;
     uint8 public totalGuards;
@@ -60,11 +60,11 @@ contract Guardian {
     error QuorumExceeded(uint8 proposed, uint8 current);
 
     constructor(address _owner) {
-        owner = _owner;
+        OWNER = _owner;
     }
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "only owner");
+        require(msg.sender == OWNER, "only owner");
         _;
     }
 
@@ -154,7 +154,7 @@ contract Guardian {
 
         if (!r.executed && r.approvals >= requiredApprovals) {
             r.executed = true;
-            ISimpleAccount(owner).executeRecovery(newOwner);
+            ISimpleAccount(OWNER).executeRecovery(newOwner);
             emit RecoveryExecuted(newOwner);
         }
     }

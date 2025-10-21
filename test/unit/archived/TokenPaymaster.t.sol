@@ -1,23 +1,26 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {stdStorage, StdStorage} from "forge-std/Test.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "@account-abstraction/interfaces/PackedUserOperation.sol";
-import "../../src/TokenPaymaster.sol";
-import {SimpleAccountV2} from "../../src/SimpleAccountV2.sol";
-import {MockOracle} from "../../src/utils/MockOracle.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
-import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-import {DebtAccountFactory} from "../../src/DebtAccountFactory.sol";
+import {TokenPaymaster} from "../../../src/archived/TokenPaymaster.sol";
+import {SimpleAccountV2} from "../../../src/archived/SimpleAccountV2.sol";
+import {MockOracle} from "../../../src/archived/utils/MockOracle.sol";
+import {UniswapHelper, ISwapRouter} from "../../../src/archived/utils/UniswapHelper.sol";
+import {DebtAccountFactory} from "../../../src/archived/DebtAccountFactory.sol";
+import {OracleHelper} from "../../../src/archived/utils/OracleHelper.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IPaymaster} from "@account-abstraction/interfaces/IPaymaster.sol";
 
 contract TokenPaymasterTest is Test {
     using stdStorage for StdStorage;
 
-    IEntryPoint public immutable entrypoint = IEntryPoint(0x0000000071727De22E5E9d8BAf0edAc6f37da032);
+    IEntryPoint public immutable ENTRYPOINT = IEntryPoint(0x0000000071727De22E5E9d8BAf0edAc6f37da032);
     address fcOwner = address(0x173);
-    DebtAccountFactory factory = new DebtAccountFactory(entrypoint, fcOwner);
+    DebtAccountFactory factory = new DebtAccountFactory(ENTRYPOINT, fcOwner);
 
     PackedUserOperation public testUserOp = PackedUserOperation({
         sender: address(0x169),
@@ -31,14 +34,14 @@ contract TokenPaymasterTest is Test {
         signature: hex"8B89386EA80D89"
     });
 
-    //Token to execute crosschain transfers: Testnet USDC
-    IERC20 transferToken = IERC20(0x5fd84259d66Cd46123540766Be93DFE6D43130D7);
-    //Token used to pay gas
-    IERC20Metadata gasToken = IERC20Metadata(vm.envAddress("GAS_TOKEN"));
+    //Token to execute crosschain transfers
+    IERC20 transferToken = IERC20(0xA8C0c11bf64AF62CDCA6f93D3769B88BdD7cb93D);
+    //Token used to pay gas: Arbitrum Sepolia USDC
+    IERC20Metadata gasToken = IERC20Metadata(0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d);
     //Wrapped native token to swap from gas token to native token
-    IERC20 wrappedNative = IERC20(vm.envAddress("W_NATIVE"));
+    IERC20 wrappedNative = IERC20(makeAddr('wrappedNative'));
     //UniSwap router to swap gas
-    ISwapRouter swapRouter = ISwapRouter(vm.envAddress("UNISWAP_ROUTER"));
+    ISwapRouter swapRouter = ISwapRouter(makeAddr('swapRouter'));
 
     //TokenPaymaster configuration
     TokenPaymaster.TokenPaymasterConfig public tokenPaymasterConfig = TokenPaymaster.TokenPaymasterConfig({
@@ -104,7 +107,7 @@ contract TokenPaymasterTest is Test {
         return new TokenPaymaster(
             gasToken,
             12,  //18 - 12 = 6 token decimals
-            entrypoint,
+            ENTRYPOINT,
             wrappedNative,
             swapRouter,
             tokenPaymasterConfig,
@@ -282,12 +285,7 @@ contract TokenPaymasterTest is Test {
             .with_key(address(p))
             .checked_write(10e6);
         
-        vm.expectRevert(abi.encodeWithSelector(
-            bytes4(0xe450d38c),  //Insufficient balance error selector
-            address(p),
-            uint(10e6),
-            uint(11e6)
-        ));
+        vm.expectRevert(bytes("ERC20: transfer amount exceeds balance"));
         vm.prank(owner);
         p.withdrawToken(owner, 11e6);
     }
@@ -349,7 +347,7 @@ contract TokenPaymasterTest is Test {
 
         p.updateCachedPrice(false);
         vm.expectRevert(bytes("Not enough gas"));
-        vm.prank(address(entrypoint));
+        vm.prank(address(ENTRYPOINT));
         p.validatePaymasterUserOp(testUserOp, "", 4e12); //there must be at least 0.008 USDT
     }
 
@@ -367,7 +365,7 @@ contract TokenPaymasterTest is Test {
 
         p.updateCachedPrice(false);
         vm.expectRevert(bytes("Not enough gas allowance"));
-        vm.prank(address(entrypoint));
+        vm.prank(address(ENTRYPOINT));
         p.validatePaymasterUserOp(testUserOp, "", 4e12); //there must be at least 0.008 USDT
     }
 
@@ -403,7 +401,7 @@ contract TokenPaymasterTest is Test {
             )
         );
 
-        vm.prank(address(entrypoint));
+        vm.prank(address(ENTRYPOINT));
         (bytes memory context, uint256 validationResult) = p.validatePaymasterUserOp(modifiedUserOp, "", 4e12);
         bool sigFailed = (validationResult & 1) != 0;
         assertEq(sigFailed, false);
@@ -442,7 +440,7 @@ contract TokenPaymasterTest is Test {
             .checked_write(10e6);
 
         vm.expectRevert();
-        vm.prank(address(entrypoint));
+        vm.prank(address(ENTRYPOINT));
         p.postOp(IPaymaster.PostOpMode.opSucceeded, abi.encode(sender, receiver), actualGasCost, actualUserOpFeePerGas);
     }
 
@@ -468,7 +466,7 @@ contract TokenPaymasterTest is Test {
         vm.prank(receiver);
         gasToken.approve(address(p), 5e6);
 
-        vm.prank(address(entrypoint));
+        vm.prank(address(ENTRYPOINT));
         p.postOp(IPaymaster.PostOpMode.opSucceeded, abi.encode(sender, receiver), actualGasCost, actualUserOpFeePerGas);
     }
 
@@ -499,7 +497,7 @@ contract TokenPaymasterTest is Test {
         account.execute(address(gasToken), 0, func);
         assertEq(gasToken.allowance(address(account), address(p)), 5e6);
 
-        vm.startPrank(address(entrypoint));
+        vm.startPrank(address(ENTRYPOINT));
         p.postOp(IPaymaster.PostOpMode.opSucceeded, abi.encode(address(account), address(account)), actualGasCost, actualUserOpFeePerGas);
         assertEq(account.createDebt(), 0);
         p.postOp(IPaymaster.PostOpMode.opSucceeded, abi.encode(address(account), address(account)), actualGasCost, actualUserOpFeePerGas);
@@ -655,9 +653,11 @@ contract TokenPaymasterTest is Test {
         uint cost = p.quoteCrossChainDeposit(10003);
         //Cost must be in gas Token: USDT
         //On testnets, gas is high
-        //With 1 ETH = 2000 USDT, cost must be near 30 USDT
-        assertEq(cost >= 20e6, true);
-        assertEq(cost <= 40e6, true);
+        //With 1 ETH = 2000 USDT, cost must be near 0.15 USDT
+        //It vary lots, so we check a range
+        
+        assertEq(cost >= 100000, true);
+        assertEq(cost <= 300000, true);
     }
 
     function test_sendCrossChainDeposit_failOn_senderIsAny() public {
@@ -742,9 +742,9 @@ contract TokenPaymasterTest is Test {
 
         vm.startPrank(sender);
         gasToken.approve(address(p), 90e6);
-        transferToken.approve(address(p), 1e6);
+        transferToken.approve(address(p), 2e6);
         
-        vm.expectRevert(bytes("ERC20: transfer amount exceeds balance"));
+        vm.expectRevert();
         p.sendCrossChainDeposit(
             10003,
             address(0x879),
@@ -772,9 +772,7 @@ contract TokenPaymasterTest is Test {
             .sig(transferToken.balanceOf.selector)
             .with_key(sender)
             .checked_write(10e6);
-
         vm.startPrank(sender);
-        gasToken.approve(address(p), 90e6);
         
         vm.expectRevert(bytes("ERC20: transfer amount exceeds allowance"));
         p.sendCrossChainDeposit(

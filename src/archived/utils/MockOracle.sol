@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.0;
 
-import "./IOracle.sol";
+import {IOracle} from "./IOracle.sol";
 
 contract MockOracle is IOracle {
     int256 private price;

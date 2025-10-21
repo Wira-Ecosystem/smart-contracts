@@ -1,9 +1,9 @@
 pragma solidity ^0.8.24;
 
-import {Test, console} from "forge-std/Test.sol";
-import {Guardian} from "../../src/Guardians.sol";
-import {SimpleAccountV2} from "../../src/SimpleAccountV2.sol";
-import {DebtAccountFactory} from "../../src/DebtAccountFactory.sol";
+import {Test} from "forge-std/Test.sol";
+import {Guardian} from "../../../src/archived/Guardians.sol";
+import {SimpleAccountV2} from "../../../src/archived/SimpleAccountV2.sol";
+import {DebtAccountFactory} from "../../../src/archived/DebtAccountFactory.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 
 contract GuardianTest is Test {
@@ -315,7 +315,7 @@ contract GuardianTest is Test {
         guardian.approveRecovery(newOwner);
 
         // Verificar que el recovery está activo
-        (uint8 approvals, bool executed, uint256 deadline, bool expired) = guardian.getRecoveryStatus(newOwner);
+        (uint8 approvals, bool executed, , bool expired) = guardian.getRecoveryStatus(newOwner);
         assertEq(approvals, 1);
         assertFalse(executed);
         assertFalse(expired);
@@ -769,7 +769,7 @@ contract GuardianTest is Test {
     function test_OnlyOwnerCanCreateGuardianContract() public {
         // Test implícito: verificar que el constructor establece correctamente el owner
         Guardian testGuardian = new Guardian(address(account));
-        assertEq(testGuardian.owner(), address(account));
+        assertEq(testGuardian.OWNER(), address(account));
         
         vm.prank(vm.addr(0x999));
         vm.expectRevert(bytes("only owner"));

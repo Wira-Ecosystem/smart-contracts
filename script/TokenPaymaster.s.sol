@@ -4,13 +4,15 @@
 pragma solidity ^0.8.24;
 // Especifica la versión del compilador de Solidity requerido
 
-import "forge-std/Script.sol";
+import {Script, console} from "forge-std/Script.sol";
 // Importa utilidades de Forge para scripts
 
-import "../src/TokenPaymaster.sol";
+import {TokenPaymaster, IERC20Metadata, IERC20} from "../src/archived/TokenPaymaster.sol";
+import {UniswapHelper, ISwapRouter} from "../src/archived/utils/UniswapHelper.sol";
+import {OracleHelper} from "../src/archived/utils/OracleHelper.sol";
 // Importa el contrato TokenPaymaster
 
-import "../src/utils/MockOracle.sol";
+import {MockOracle} from "../src/archived/utils/MockOracle.sol";
 // Importa el contrato MockOracle para precios simulados
 
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";

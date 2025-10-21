@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test, console} from "forge-std/Test.sol";
-import {Guardian} from "../../src/Guardians.sol";
-import {SimpleAccountV2} from "../../src/SimpleAccountV2.sol";
-import {DebtAccountFactory} from "../../src/DebtAccountFactory.sol";
+import {Test} from "forge-std/Test.sol";
+import {Guardian} from "../../../src/archived/Guardians.sol";
+import {SimpleAccountV2} from "../../../src/archived/SimpleAccountV2.sol";
+import {DebtAccountFactory} from "../../../src/archived/DebtAccountFactory.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 
 contract GuardianQuorumTest is Test {
@@ -23,7 +23,10 @@ contract GuardianQuorumTest is Test {
     bytes32 guardian3Hash;
 
     function setUp() public {
+        vm.startPrank(msg.sender);
         factory = new DebtAccountFactory(entrypoint, msg.sender);
+        factory.initialize(address(0));
+        vm.stopPrank();
 
         owner = vm.addr(0x123);
         account = factory.createAccount(owner, 123456);
