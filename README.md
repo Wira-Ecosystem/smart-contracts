@@ -49,3 +49,15 @@ $ forge --help
 $ anvil --help
 $ cast --help
 ```
+
+## Technical Limits
+
+- For multichain, a user can have the same SmartWallet address on several networks, as long as that SmartWallet is created with the same owner address, has the same salt, and the factory also has the same address.
+
+- The factory must have the same code and be deployed by the same wallet to have the same address on all networks.
+
+- The factory cannot be made upgradable; this actually doesn't make sense. If we wanted to add, for example, a spend credit to the user for creating the wallet, this only affects the new ones. So we simply deploy a new factory.
+
+- If Base paymaster will be used, it's nedded to use their Smart Wallets, so the factory wouldn't exist and new functions can't be added.
+
+- Users can recover access on all networks with their owner address and salt saved on recovery servers.
