@@ -7,6 +7,7 @@ import {SimpleAccountFactory} from "../../src/SimpleAccountFactory.sol";
 import {IEntryPoint} from "@account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "@account-abstraction/interfaces/IEntryPoint.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {SIG_VALIDATION_SUCCESS, SIG_VALIDATION_FAILED} from "@account-abstraction/core/Helpers.sol";
 
 //Test set up for simple account
 contract SimpleAccountTest is Test {
@@ -130,6 +131,47 @@ contract SimpleAccountTest is Test {
         assertEq(validationData, 1, "Signature validation should fail with tampered data");
     }
 
+    // Test for Signature Malleability Vulnerability
+    // Assumes a public wrapper in SimpleAccount: function validateSignature(PackedUserOperation calldata userOp, bytes32 userOpHash) public returns (uint256) { return _validateSignature(userOp, userOpHash); }
+    // This test demonstrates the vulnerability by showing that original signatures are accepted, and malleable signatures are rejected.
+    function test_SignatureValidation_Failure_Malleability() public {
+        uint ownerPrivateKey = 0x123;
+        address owner = vm.addr(ownerPrivateKey);
+        SimpleAccount account = factory.createAccount(owner, 123456);
+
+        PackedUserOperation memory userOp = PackedUserOperation({
+            sender: address(account),
+            nonce: 0,
+            initCode: "",
+            callData: "",
+            accountGasLimits: bytes32(0),
+            preVerificationGas: 0,
+            gasFees: bytes32(0),
+            paymasterAndData: "",
+            signature: ""
+        });
+        bytes32 userOpHash = keccak256(abi.encode(userOp));
+        bytes32 hash = MessageHashUtils.toEthSignedMessageHash(userOpHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPrivateKey, hash);
+        userOp.signature = abi.encodePacked(r, s, v);
+
+        // Assert original signature is valid
+        vm.startPrank(address(entrypoint));
+        uint256 validationData = account.validateUserOp(userOp, userOpHash, 0);
+        vm.stopPrank();
+        assertEq(validationData, SIG_VALIDATION_SUCCESS);
+
+        // Create malleable signature by flipping s: s' = n - s
+        bytes32 n = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141;
+        bytes32 sMalleable = bytes32(uint256(n) - uint256(s));
+        userOp.signature = abi.encodePacked(r, sMalleable, v);
+
+        // Assert malleable signature is rejected
+        vm.expectRevert(bytes('ECDSAInvalidSignatureS(0xeebf59c2bbb0e946b901ba62017bda80b3bad0f146d572b29dcf63f21486f9af)'));
+        vm.prank(address(entrypoint));
+        account.validateUserOp(userOp, userOpHash, 0);
+    }
+
     // ===================== CRITICAL SECURITY TESTS =====================
 
     // 1) Test for reentrancy attacks
@@ -163,37 +205,6 @@ contract SimpleAccountTest is Test {
         acc.execute(address(acc), 0, abi.encodeWithSignature("setCollectOnDeliver(bool)", true));
         vm.stopPrank();
     }
-
-    // 2) Test for unauthorized access control
-    /*function test_SecurityCritical_UnauthorizedGuardianRecovery() public {
-        address owner = vm.addr(0x123);
-        address attacker = vm.addr(0x456);
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-        
-        // Set a guardian
-        vm.startPrank(owner);
-        acc.setGuardian(vm.addr(0x789));
-        vm.stopPrank();
-        
-        // Attacker tries to execute recovery
-        vm.startPrank(attacker);
-        vm.expectRevert(); // Should revert as attacker is not guardian
-        acc.executeRecovery(attacker);
-        vm.stopPrank();
-    }*/
-
-    // 3) Test for guardian recovery vulnerabilities
-    /*
-    function test_SecurityCritical_IntegerOverflow() public {
-        address owner = vm.addr(0x123);
-        SimpleAccount acc = factory.createAccount(owner, 123456);
-        
-        // Try to set maximum debt value
-        vm.startPrank(address(factory));
-        acc.setCreateDebt(type(uint256).max);
-        assertEq(acc.createDebt(), type(uint256).max, "Should handle max uint256 value");
-        vm.stopPrank();
-    }*/
 
     // 7) Test for external call security
     function test_SecurityCritical_ExternalCallSecurity() public {
@@ -300,6 +311,25 @@ contract SimpleAccountTest is Test {
         bytes memory func = abi.encodeWithSignature("addDeposit()");
         acc.execute(address(acc), 0.01 ether, func);
         assertEq(acc.getDeposit(), 0.01 ether);
+
+        vm.stopPrank();        
+    }
+
+    function test_AddDeposit_Unauthorized() public {
+        address owner = vm.addr(0x123);
+        SimpleAccount acc = factory.createAccount(owner, 123456);
+
+        //To call a payable function through execute, account and not owner must have funds
+        vm.deal(address(acc), 1 ether);
+
+        // Attacker tries to add deposit
+        address attacker = vm.addr(0x456);
+        vm.startPrank(attacker);
+
+        assertEq(acc.getDeposit(), 0);
+        bytes memory func = abi.encodeWithSignature("addDeposit()");
+        vm.expectRevert("account: not Owner or EntryPoint");
+        acc.execute(address(acc), 0.01 ether, func);
 
         vm.stopPrank();        
     }

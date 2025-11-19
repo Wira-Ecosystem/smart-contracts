@@ -87,7 +87,6 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
      */
     function initialize(address anOwner) public virtual initializer {
         _initialize(anOwner);
-        emit SimpleAccountInitialized(_ENTRYPOINT, owner);
     }
 
     function _initialize(address anOwner) internal virtual {
@@ -128,7 +127,7 @@ contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, In
     /**
      * deposit more funds for this account in the entryPoint
      */
-    function addDeposit() public payable {
+    function addDeposit() public payable onlyOwner {
         entryPoint().depositTo{value: msg.value}(address(this));
     }
 
